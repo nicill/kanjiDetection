@@ -80,7 +80,6 @@ def boxCoordsToFile(file,boxC):
     with open(file, 'a') as f:
         list(map( writeTuple, boxC))
 
-
 def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
     """
         Receives a folder with images
@@ -124,3 +123,22 @@ def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
                 cv2.imwrite(os.path.join(outDir,"images",newFileName+".png"),i)
                 #cv2.imwrite(os.path.join(outDir,"masks",newFileName+"MASK.png"),m)
                 boxCoordsToFile(os.path.join(outDir,"labels",newFileName+".txt"),l)
+
+def buildTesting(imageFolder, maskFolder, outTest):
+    """
+        Receives a folder with images and another with masks
+        and copies to a "testing" file, those with no mask
+        (name correspondences between
+        mask and image files )
+    """
+    Path(os.path.join(outTest,"images")).mkdir(parents=True, exist_ok=True)
+
+    for dirpath, dnames, fnames in os.walk(imageFolder):
+        for f in fnames:
+            # for each image, check if it has been noise removed
+            # and if it has a mask
+            if "noiseRemoval" in str(f):
+                maskName = "KP"+str(f[:-30])+"AN.jpg"
+                if not Path(os.path.join(maskFolder,maskName)).is_file():
+                    im = cv2.imread(os.path.join(imageFolder,f))
+                    cv2.imwrite(os.path.join(outTest,"images",f),im)

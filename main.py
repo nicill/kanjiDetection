@@ -9,8 +9,9 @@ import configparser
 import sys
 import yaml
 
-from buildTrainValidation import buildTrainValid
+from buildTrainValidation import buildTrainValid,buildTesting
 from train import train_YOLO
+from predict import predict_yolo
 
 def read_config(filename):
     conf = configparser.ConfigParser()
@@ -24,22 +25,26 @@ def read_config(filename):
     res_dict["Post"] = conf[section].get('postprocess') == "yes"
 
     section = 'PREP'
-    if res_dict["Prep"] :
-        res_dict["Train_input_dir_images"] = conf[section].get('trainSourceImages')
-        res_dict["Train_input_dir_masks"] = conf[section].get('trainSourceMasks')
+    res_dict["Train_input_dir_images"] = conf[section].get('trainSourceImages')
+    res_dict["Train_input_dir_masks"] = conf[section].get('trainSourceMasks')
+    res_dict["createTest"] = conf[section].get('doTestFolder') == "yes"
 
     section = 'TRAIN'
-    if res_dict["Prep"] or res_dict["Train"]:
-        res_dict["slice"] = int(conf[section].get('sliceSize'))
+    res_dict["slice"] = int(conf[section].get('sliceSize'))
 
-        res_dict["TV_dir"] = conf[section].get('tVDir')
-        res_dict["Train_dir"] = conf[section].get('trainDir')
-        res_dict["Valid_dir"] = conf[section].get('validDir')
-        res_dict["Train_Perc"] = int(conf[section].get('trainPercentage'))
+    res_dict["TV_dir"] = conf[section].get('tVDir')
+    res_dict["Train_dir"] = conf[section].get('trainDir')
+    res_dict["Valid_dir"] = conf[section].get('validDir')
+    res_dict["Train_Perc"] = int(conf[section].get('trainPercentage'))
 
-        res_dict["Train_res"] = conf[section].get('trainResFolder')
-        res_dict["Valid_res"] = conf[section].get('valResFolder')
-        res_dict["ep"] = int(conf[section].get('epochs'))
+    res_dict["Train_res"] = conf[section].get('trainResFolder')
+    res_dict["Valid_res"] = conf[section].get('valResFolder')
+    res_dict["ep"] = int(conf[section].get('epochs'))
+
+    section = 'TEST'
+    res_dict["Test_dir"] = conf[section].get('testDir')
+    res_dict["models"] = conf[section].get('modelist').strip().split(",")
+    res_dict["Pred_dir"] = conf[section].get('predDir')
 
     return res_dict
 
@@ -67,10 +72,17 @@ def main(fName):
         conf["Train_input_dir_masks"],conf["slice"],conf["Train_dir"],
         conf["Valid_dir"],conf["Train_Perc"])
 
+        if ["createTest"]:
+            buildTesting(conf["Train_input_dir_images"],
+            conf["Train_input_dir_masks"], conf["Test_dir"])
+
     if conf["Train"]:
         yamlTrainFile = "trainAUTO.yaml"
         makeTrainYAML(conf,yamlTrainFile)
         train_YOLO(conf,yamlTrainFile)
+
+    if conf["Test"]:
+        predict_yolo(conf)
 
 if __name__ == "__main__":
 

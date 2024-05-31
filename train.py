@@ -21,7 +21,8 @@ def train_YOLO(conf, datasrc):
 
     settings.update({'runs_dir':resfolder})
     model = YOLO('yolov8n.pt')
-    results = model.train(data=datasrc,epochs=epochs,imgsz=imgsize,name=name,device=0)
+    results = model.train(data=datasrc,epochs=epochs,
+                imgsz=imgsize,name=name,device=0)
     results = model.val(project=resfolder,name=valfolder,save_json=True)
 
 
