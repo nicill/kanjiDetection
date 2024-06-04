@@ -1,0 +1,16 @@
+for postprocessing, 
+
+- Make test file output binary mask files and coordinate files too
+
+- create code to combine masks (heatmap
+
+- make postprocess or evaluate file
+	- receive the route of the results (txt boxes, binary masks) and of the original test set  
+	- for the binary mask, use tooya's code to say how many where found "missed"
+	- look for yolo code for map50... and do that with the boxes or masks
+
+- test with images without noise reduction too
+	
+- implement leave one out 10 fold cross validation scheme
+
+- 
