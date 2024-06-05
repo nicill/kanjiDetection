@@ -1,4 +1,6 @@
 import cv2
+from skimage.feature import blob_dog
+from math import sqrt
 from ultralytics import YOLO
 from sahi import AutoDetectionModel
 from sahi.utils.cv import read_image,visualize_object_predictions
@@ -10,31 +12,97 @@ import sys
 
 os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = pow(2,40).__str__()
 
+# opencv MSER detector
+def detectBlobsMSER(img, params_dict):
+    #Adjust parameters
+    if "delta" in params_dict: delt = params_dict["delta"]
+    else:  delt = 5
+    if "minA" in params_dict: minA = params_dict["minA"]
+    else:  minA = 60
+    if "maxA" in params_dict: maxA = params_dict["maxA"]
+    else:  maxA = 14400
+    # use MSER blob detector
+    mser = cv2.MSER_create(delta = delt, min_area = minA, max_area = maxA)
+
+
+    #detect regions in gray scale image
+    regions, _ = mser.detectRegions(img)
+    hulls = [cv2.convexHull(p.reshape(-1, 1, 2)) for p in regions]
+
+    mask = np.zeros((img.shape[0], img.shape[1], 1), dtype=np.uint8)
+    mask=255-mask
+
+    for contour in hulls:
+        cv2.drawContours(mask, [contour], -1, (0, 0, 0), -1)
+
+    return mask
+
+# SCIKITLEARN BLOB DETECTORS
+def detectBlobsDOG(im, params_dict):
+
+    if "min_s" in params_dict: min_s = params_dict["min_s"]
+    else:  min_s=10
+    if "max_s" in params_dict: max_s = params_dict["max_s"]
+    else:  max_s=200
+    if "over" in params_dict: over = params_dict["min_s"]
+    else:  over=.1
+    if "threshold" in params_dict: th = params_dict["min_s"]
+    else:  th=.1
+
+
+    blob_List = blob_dog(255-im, min_sigma = min_s, max_sigma = max_s, threshold=th, overlap = over)
+    # Compute radii in the 3rd column.
+    blob_List[:, 2] = blob_List[:, 2] * sqrt(2)
+
+    mask = np.zeros((im.shape[0], im.shape[1], 1), dtype=np.uint8)
+    # write to file
+    for blob in blob_List:
+        #print("blob!")
+        y, x, r = blob
+        cv2.rectangle(mask,(int(x-r), int(y-r)), (int(x+r), int(y+r)), 255, -1)
+
+    return 255 - mask
+
+
+
+# YOLO RELATED FUNCTIONS
 def boxesToTextFile(result,file):
     """
     Receive a sahi prediction object and write
     the context to a legible text file
     """
+    def writeBox(x):
+        """
+        inner function to write
+        the information of a box
+        to file
+        """
+        f.write(str(x.category.id)+" "+str(x.bbox.to_xywh()[0])+" "
+        +str(x.bbox.to_xywh()[1])+" "+str(x.bbox.to_xywh()[2])+" "
+        +str(x.bbox.to_xywh()[3])+"\n")
+
     with open(file,'w+') as f:
-        for x in result.object_prediction_list:
-            f.write(str(x.category.id)+" "+str(x.bbox.to_xywh()[0])+" "+str(x.bbox.to_xywh()[1])+" "+str(x.bbox.to_xywh()[2])+" "+str(x.bbox.to_xywh()[3])+"\n")
+        list(map(writeBox,result.object_prediction_list))
 
 def boxesToMaskFile(result,file,shape):
     """
     Receive a sahi prediction object and write
     the context to a Binary
     """
+    def paintBox(x):
+        """
+        Inner function to paint the info of
+        a box into a binary mask
+        """
+        nonlocal im
+        x,y,w,h =  x.bbox.to_xywh()
+        im = cv2.rectangle(im, (int(x), int(y)),
+        (int(x+w), int(y+h)), 0, -1)
+
     im = 255*np.ones((shape[0],shape[1]), np.uint8)
     with open(file,'w+') as f:
-        for x in result.object_prediction_list:
-            x,y,w,h =  x.bbox.to_xywh()
-
-            # Using cv2.rectangle() method
-            # Draw a rectangle with blue line borders of thickness of 2 px
-            im = cv2.rectangle(im, (int(x), int(y)),
-            (int(x+w), int(y+h)), 0, -1)
+        list(map(paintBox,result.object_prediction_list))
         cv2.imwrite(file,im)
-
 
 def testFileList(folder):
     print(folder)
@@ -51,6 +119,7 @@ def predict_yolo(conf):
     #print(testPath)
 
     for imPath in testImageList:
+        print("predicting "+imPath)
         for currentmodel in modellist: #not doing anything at the moment
             modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
 
@@ -60,7 +129,8 @@ def predict_yolo(conf):
             image = cv2.imread(imPath)
 
             result = get_sliced_prediction(image,detectionModel,slice_height=512
-            ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2)
+            ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
+            verbose = False )
 
             boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
             boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
