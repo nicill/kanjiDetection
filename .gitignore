@@ -1,5 +1,7 @@
 data
 exp
+predict
+results
 __pycache__
 *.yaml
 *.pt

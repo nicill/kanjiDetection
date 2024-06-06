@@ -1,6 +1,8 @@
 import cv2
 from skimage.feature import blob_dog
 from math import sqrt
+from pathlib import Path
+
 from ultralytics import YOLO
 from sahi import AutoDetectionModel
 from sahi.utils.cv import read_image,visualize_object_predictions
@@ -64,7 +66,6 @@ def detectBlobsDOG(im, params_dict):
     return 255 - mask
 
 
-
 # YOLO RELATED FUNCTIONS
 def boxesToTextFile(result,file):
     """
@@ -105,7 +106,7 @@ def boxesToMaskFile(result,file,shape):
         cv2.imwrite(file,im)
 
 def testFileList(folder):
-    print(folder)
+    #print(folder)
     for dirpath, dnames, fnames in os.walk(folder):
         return [os.path.join(folder,f) for f in fnames]
 
@@ -117,13 +118,13 @@ def predict_yolo(conf):
     predict_dir = conf["Pred_dir"]
 
     #print(testPath)
+    #create predictions dir if it does not exist
+    Path(predict_dir).mkdir(parents=True, exist_ok=True)
 
     for imPath in testImageList:
         print("predicting "+imPath)
         for currentmodel in modellist: #not doing anything at the moment
             modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
-
-            #print(modelpath)
 
             detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',model_path=modelpath,device=0)
             image = cv2.imread(imPath)
