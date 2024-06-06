@@ -121,4 +121,7 @@ def boxesFound(im1, im2, verbose = False):
     #print(totalBoxes)
     if verbose: print("Result:"+str(100 * count/totalBoxes)+"%\n")
 
-    return 100 * count/totalBoxes
+    if totalBoxes != 0:
+        return 100 * count/totalBoxes
+    else:
+        return 0 

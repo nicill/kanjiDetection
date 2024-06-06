@@ -2,7 +2,19 @@ import os
 from ultralytics import YOLO
 from ultralytics import settings
 import torch
+import yaml
+
 torch.backends.cudnn.benchmark = True
+
+def makeTrainYAML(conf, fileName = 'trainAUTO.yaml'):
+    """
+    Function to write a yaml file
+    """
+    data = { "names": {0: 'Kanji'}, "path": conf["TV_dir"], "train": conf["Train_dir"],
+            "val": conf["Valid_dir"] }
+    with open(fileName, 'w') as outfile:
+        yaml.dump(data, outfile, default_flow_style=False)
+
 
 def train_YOLO(conf, datasrc):
     """

@@ -7,10 +7,10 @@
 
 import configparser
 import sys
-import yaml
+import os
 
 from buildTrainValidation import buildTrainValid,buildTesting
-from train import train_YOLO
+from train import train_YOLO,makeTrainYAML
 from predict import predict_yolo
 
 def read_config(filename):
@@ -49,16 +49,6 @@ def read_config(filename):
 
     return res_dict
 
-def makeTrainYAML(conf, fileName = 'trainAUTO.yaml'):
-    """
-    Function to write a yaml file
-    """
-    data = { "names": {0: 'Kanji'}, "path": conf["TV_dir"], "train": conf["Train_dir"],
-            "val": conf["Valid_dir"] }
-    with open(fileName, 'w') as outfile:
-        yaml.dump(data, outfile, default_flow_style=False)
-
-
 def main(fName):
     """
     main function, read command line parameters
@@ -69,15 +59,19 @@ def main(fName):
 
     # Do whatever needs to be done
     if conf["Prep"]:
+        print("calling btv")
         buildTrainValid(conf["Train_input_dir_images"],
-        conf["Train_input_dir_masks"],conf["slice"],conf["Train_dir"],
-        conf["Valid_dir"],conf["Train_Perc"])
+        conf["Train_input_dir_masks"],conf["slice"],os.path.join(conf["TV_dir"],conf["Train_dir"]),
+        os.path.join(conf["TV_dir"],conf["Valid_dir"]),conf["Train_Perc"])
 
         if ["createTest"]:
+            print("create test")
             buildTesting(conf["Train_input_dir_images"],
             conf["Train_input_dir_masks"], conf["Test_dir"])
 
     if conf["Train"]:
+        print("train!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
         yamlTrainFile = "trainAUTO.yaml"
         makeTrainYAML(conf,yamlTrainFile)
         train_YOLO(conf,yamlTrainFile)

@@ -88,13 +88,14 @@ def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
         mask and image files
     """
     # create output directories if they do not exist
-    #for d in [os.path.join(outTrain,"images"),os.path.join(outTrain,"masks"),
-    #os.path.join(outTrain,"labels"),os.path.join(outVal,"images"),
-    #os.path.join(outVal,"masks"),os.path.join(outVal,"labels")]:
-    #    Path(d).mkdir(parents=True, exist_ok=True)
-    for d in [os.path.join(outTrain,"images"),os.path.join(outTrain,"labels"),
-    os.path.join(outVal,"images"),os.path.join(outVal,"labels")]:
+    for d in [os.path.join(outTrain,"images"),os.path.join(outTrain,"masks"),
+    os.path.join(outTrain,"labels"),os.path.join(outVal,"images"),
+    os.path.join(outVal,"masks"),os.path.join(outVal,"labels")]:
         Path(d).mkdir(parents=True, exist_ok=True)
+    #for d in [os.path.join(outTrain,"images"),os.path.join(outTrain,"labels"),
+    #os.path.join(outVal,"images"),os.path.join(outVal,"labels")]:
+    #    Path(d).mkdir(parents=True, exist_ok=True)
+    print("made paths "+str(os.path.join(outVal,"images") ))
 
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:

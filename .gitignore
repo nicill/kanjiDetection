@@ -1,0 +1,6 @@
+data
+exp
+__pycache__
+*.yaml
+*.pt
+ideas

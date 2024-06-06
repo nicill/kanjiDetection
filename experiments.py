@@ -45,12 +45,12 @@ def main(fName):
 
     # params
     params = ["over","min_s","max_s"]
-    vals = [[0.3],[40,50,30,20],[90,100]]
+    vals = [[0.1,0.3,0.5],[10,20,30,40],[40,50,100]]
     parDicts = makeParamDicts(params,vals)
     #https://scikit-image.org/docs/stable/api/skimage.feature.html#skimage.feature.blob_log
 
     paramsMSER = ["delta","minA","maxA"]
-    valsMSER = [[1,3,5,7,10],[60,80,100,500],[5000,7500,14400]]
+    valsMSER = [[5,15,20,50],[100,500,1000,2000,5000],[10000,14400,20000,25000]]
     #valsMSER = [[5,7],[60],[14400]]
     parDictsMSER = makeParamDicts(paramsMSER,valsMSER)
     #https://docs.opencv.org/3.4/d3/d28/classcv_1_1MSER.html
