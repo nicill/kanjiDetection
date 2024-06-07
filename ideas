@@ -1,6 +1,5 @@
 for postprocessing, 
 
-- Make test file output binary mask files and coordinate files too
 
 - create code to combine masks (heatmap
 
@@ -13,4 +12,46 @@ for postprocessing,
 	
 - implement leave one out 10 fold cross validation scheme
 
-- 
+- How do we create a database for kanji classification ?
+	- Ideally, use the same characters. Can we define what those characters are?
+	- 
+	
+	
+Dear Antonia, (CCed 脇先生)
+
+I hope your trips aroung Tohoku are going well (we have had lots of rain lately, hopefully that was not too incovenient).
+
+We have (already!) had some success with the detection of characters in wasan documents. There is still a lot of work to do in this part, but we are probably in the ranges of 90% success rate in detection with the YOLO network (I am speaking after seeing just a few results, so let's take this positively but with some prudence and skepticism too).
+
+As I said, there is still a lot of work to do in detection, but I would like to start thinking about character classification as I suspect this part may need lots of planning and long-term work. In order to train Deep Learning models to classify characters, we need to build a character library to train the models (we adjust the parameter of AI models -in research-project-proposal-speak, the models "learn"-  ) by using lots of examples of the classifications that we want to obtain.
+
+Ideally, such a training database should be:
+
+- Complete: include all existing characters.
+- Extensive: Have enough examples of each character so that all possible variations in writing are shown.
+- Representative. Include every character in a proportion similar to what happens in reality (if a character happens twice as much as another in wasan documents, it should appear twice as much in the database too).
+
+All of these things are difficult and time consuming to achieve, but I would like to at least consider the possibility of building a Wasan character database using the characters that we are detecting automatically.
+
+I want to apologize in advance for my ignorance in this topic. My speciality is computer vision and I do not know much about Japanese/Chinese writing systems apart from modern ones (and my grasp on modern Kanji is not great).
+
+Is there any sort of agreed upon "list" of the Characters that can be encountered in these documents? Having this would simplify the work as we would at least a) know how many characters we are talking about b) have some sort of identifier (even if only the order on the list) for each character.
+
+If the list exists (or may be agreed upon for our purposes), is there a way to identify each character with a unique identifier? ("name", "code"). If this is possible, what kind of person can identify the code from the image of one character? For example, if there is some sort of correspondence to modern Kanji I assume Japanese speaking students could identify most Kanji through their modern equivalence. On the other hand probably experts in the field have their ways of recognizing and classifying a large number of characters much better than your average person.
+
+If the list does not exist, we would need to "build it as we go". 
+
+Here is a possible way to go about building a character database. This is just preliminary design, so I would be very interested about hearing your opinion about this.
+
+1) INPUT: We would receive a long list (a stream) of Characters that have been automatically detected. We would need to assign to each characters its correct class.
+ 
+2) I assume we cannot ask users to just come up with a unique identifier just from seeing a character image. 
+
+3) My proposal would be to make a small piece of software that classifies character classes a small number at a time (5 or 10).
+
+The user would then be shown one "new" character and 5 or 10 examples of different characters and asked to classify the character into one of the classes (press 0-5 or 0-9) or say that the character is in a different class (press "c").
+
+
+
+
+

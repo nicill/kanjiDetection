@@ -1,8 +1,6 @@
 import numpy as np
 import cv2
 import sys
-
-
 from math import sqrt
 
 def read_Color_Image(path):
@@ -40,6 +38,30 @@ def distPoints(p,q):
     Euclidean Distance bewteen 2D points
     """
     return sqrt( (p[0]-q[0])*(p[0]-q[0])+(p[1]-q[1])*(p[1]-q[1]))
+
+def recoupMasks(masks, weights, th):
+    """
+    Function to combine a list of
+    masks from different methods
+    receives the masks and a list
+    of weights and does a weighted
+    addition of the masks.
+    output a mask with the pixels over a threshold
+    """
+    def processPair(x):
+        nonlocal ret
+        m,w = x
+        ret[m==0]+=w
+
+    # initialize mask
+    ret = masks[0].copy()
+    ret[ret>0] = 0
+    # process
+    list(map(processPair,zip(masks,weights)))
+    # now transform into binary mask
+    ret[ret<th] = 0
+    ret[ret>=th] = 255
+    return 255 - ret
 
 def strictBinarization(im):
     """
@@ -124,4 +146,4 @@ def boxesFound(im1, im2, verbose = False):
     if totalBoxes != 0:
         return 100 * count/totalBoxes
     else:
-        return 0 
+        return 0
