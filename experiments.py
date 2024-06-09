@@ -128,3 +128,11 @@ if __name__ == "__main__":
     # Configuration file name, can be entered in the command line
     configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
     main(configFile)
+
+
+
+    #BEST
+    #DOG 77.5665178571429	 {'over': 0.5;min_s': 20;max_s': 100}
+
+    # MSER 72.6126785714286	 {'delta': 5;minA': 500;maxA': 25000}
+
