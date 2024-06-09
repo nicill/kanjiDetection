@@ -2,6 +2,7 @@ data
 exp
 predict
 results
+noiseRedData
 __pycache__
 *.yaml
 *.pt

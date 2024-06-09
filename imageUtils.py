@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import sys
 from math import sqrt
+import os
 
 def read_Color_Image(path):
     #Read tif image or png image
@@ -26,6 +27,20 @@ def read_Binary_Mask(path):
     retVal[retVal>50] = 255
     return retVal
 
+def gatherCharacters(source,dest):
+    """
+        Function to traverse all the "full"
+        koutenshiki data base, traverse
+        "characters" folders in the book
+        subfolders and copy them while merging
+        the same unicode character subfolders
+    """
+    for root, dirs, files in os.walk("."):
+        path = root.split(os.sep)
+        if len(path) > 1 and path[-2] == "characters":
+            shutil.copytree(root, os.path.join(dest,path[-1]),dirs_exist_ok=True)
+
+
 def sliding_window(image, stepSize, windowSize):
     # slide a window across the image
     for y in range(0, image.shape[0], stepSize):
@@ -38,6 +53,33 @@ def distPoints(p,q):
     Euclidean Distance bewteen 2D points
     """
     return sqrt( (p[0]-q[0])*(p[0]-q[0])+(p[1]-q[1])*(p[1]-q[1]))
+
+def predictionsToKanjiImages(im,mask,path):
+    """
+    Function that receives a prediction
+    Binary mask and an image and stores the
+    resulting Kanji images in the hard drive
+    """
+    def processComponent(l):
+        """
+        Inner function to store
+        the part marked by the label
+        image to disk
+        """
+        #nonlocal im
+        x = stats[l][0]
+        y = stats[l][1]
+        w = stats[l][2]
+        h = stats[l][3]
+        subIm = im[y:y+h,x:x+w]
+        cv2.imwrite(os.path.join(path,"kanji"+str(l)+".jpg"),subIm)
+
+    # Threshold  the image to make sure it is binary
+    strictBinarization(mask)
+    #compute connected components
+    numLabels, labelImage,stats, centroids = cv2.connectedComponentsWithStats(255-mask)
+    #traverse all labels but ignore label 0 as it contains the background
+    list(map(processComponent,range(1,numLabels)))
 
 def recoupMasks(masks, weights, th):
     """
@@ -147,3 +189,10 @@ def boxesFound(im1, im2, verbose = False):
         return 100 * count/totalBoxes
     else:
         return 0
+
+
+if __name__ == '__main__':
+    im = read_Binary_Mask(sys.argv[1])
+    mask = read_Binary_Mask(sys.argv[2])
+    folder = "./OU/"
+    predictionsToKanjiImages(im, mask,folder)
