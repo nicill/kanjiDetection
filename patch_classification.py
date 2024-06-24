@@ -202,7 +202,7 @@ def main(argv):
         weights = models.Swin_B_Weights.DEFAULT
         model_ft = models.swin_b(weights=weights)
         # swim B needs smaller batch size because of memory requirements
-        bs = 8
+        bs = 16
     elif arch == "vitb16":
         weights = models.ViT_B_16_Weights.DEFAULT
         model_ft = models.vit_b_16(weights=weights)
@@ -227,7 +227,7 @@ def main(argv):
     elif arch == "convnextb":
         weights = models.convnext.ConvNeXt_Base_Weights.DEFAULT
         model_ft = models.convnext_base(weights=weights)
-        bs = 8
+        bs = 16
     elif arch == "convnextl":
         weights = models.convnext.ConvNeXt_Large_Weights.DEFAULT
         model_ft = models.convnext_large(weights=weights)
@@ -291,7 +291,7 @@ def main(argv):
     optimizer_ft = optim.Adamax(model_ft.parameters(), lr=0.0002)
 
     # set epoch sizes
-    epo=5
+    epo = 10
 
     # ResNet50
     _,history = train_model(
