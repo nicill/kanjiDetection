@@ -54,7 +54,7 @@ def distPoints(p,q):
     """
     return sqrt( (p[0]-q[0])*(p[0]-q[0])+(p[1]-q[1])*(p[1]-q[1]))
 
-def predictionsToKanjiImages(im,mask,path):
+def predictionsToKanjiImages(im,mask,path,imCode):
     """
     Function that receives a prediction
     Binary mask and an image and stores the
@@ -72,7 +72,7 @@ def predictionsToKanjiImages(im,mask,path):
         w = stats[l][2]
         h = stats[l][3]
         subIm = im[y:y+h,x:x+w]
-        cv2.imwrite(os.path.join(path,"kanji"+str(l)+".jpg"),subIm)
+        cv2.imwrite(os.path.join(path,imCode+"kanjiX"+str(x)+"Y"+str(y)+"H"+str(h)+"W"+str(w)+".jpg"),subIm)
 
     # Threshold  the image to make sure it is binary
     strictBinarization(mask)
@@ -195,4 +195,4 @@ if __name__ == '__main__':
     im = read_Binary_Mask(sys.argv[1])
     mask = read_Binary_Mask(sys.argv[2])
     folder = "./OU/"
-    predictionsToKanjiImages(im, mask,folder)
+    predictionsToKanjiImages(im, mask,folder,os.path.basename(sys.argv[1])[:-4])

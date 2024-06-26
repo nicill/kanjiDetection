@@ -104,7 +104,11 @@ if __name__ == '__main__':
     print(len(vd))
 
     print(vd.numClasses())
-    print(vd.classesDict)
+    #print(vd.classesDict)
+
+    with open("classDict.txt","w") as f:
+        for cod,unicode in vd.classesDict.items():
+            f.write(str(unicode)+","+str(cod)+"\n")
 
 #    for x,y in tr:
         #print(x)
