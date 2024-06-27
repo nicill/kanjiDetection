@@ -54,11 +54,12 @@ def distPoints(p,q):
     """
     return sqrt( (p[0]-q[0])*(p[0]-q[0])+(p[1]-q[1])*(p[1]-q[1]))
 
-def predictionsToKanjiImages(im,mask,path,imCode):
+def predictionsToKanjiImages(im,mask,path,imCode,storeContext=False):
     """
     Function that receives a prediction
     Binary mask and an image and stores the
     resulting Kanji images in the hard drive
+    Adds a boolean flag to also store context images
     """
     def processComponent(l):
         """
@@ -72,9 +73,23 @@ def predictionsToKanjiImages(im,mask,path,imCode):
         w = stats[l][2]
         h = stats[l][3]
         subIm = im[y:y+h,x:x+w]
-        cv2.imwrite(os.path.join(path,imCode+"kanjiX"+str(x)+"Y"+str(y)+"H"+str(h)+"W"+str(w)+".jpg"),subIm)
+        cv2.imwrite(os.path.join(path,
+                    imCode+"kanjiX"+str(x)+"Y"+str(y)+"H"+str(h)+"W"+str(w)+".jpg")
+                    ,subIm)
+        if storeContext:
+
+            newIm = cv2.cvtColor(im,cv2.COLOR_GRAY2RGB)
+            newSubIm = newIm[y:y+h,x:x+w]
+            newSubIm[subIm==0] = (0,0,255)
+
+            subImC = newIm[max(0,int(y-contextSize/2)):y+h+contextSize,max(0,int(x-contextSize)):x+w+contextSize]
+            cv2.imwrite(os.path.join(path,
+                        "CONTEXT"+imCode+"kanjiX"+str(x)+"Y"+str(y)+"H"+str(h)+"W"+str(w)+".jpg")
+                        ,subImC)
+
 
     # Threshold  the image to make sure it is binary
+    contextSize = 500
     strictBinarization(mask)
     #compute connected components
     numLabels, labelImage,stats, centroids = cv2.connectedComponentsWithStats(255-mask)
@@ -195,4 +210,4 @@ if __name__ == '__main__':
     im = read_Binary_Mask(sys.argv[1])
     mask = read_Binary_Mask(sys.argv[2])
     folder = "./OU/"
-    predictionsToKanjiImages(im, mask,folder,os.path.basename(sys.argv[1])[:-4])
+    predictionsToKanjiImages(im, mask,folder,os.path.basename(sys.argv[1])[:-4],True)

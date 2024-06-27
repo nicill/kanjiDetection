@@ -13,7 +13,45 @@ import time
 import sys
 import numpy as np
 from collections import defaultdict
-from datasets import CPDataset
+from datasets import CPDataset,tDataset
+from imageUtils import read_Binary_Mask
+
+
+def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
+    """
+    After a model has previously been trained,
+    and Kanji images have been detected
+    read some detected images from a folder
+    classify them and output the three higher probability
+    classes into a file. Receive a class dictionary
+    to translate between class codes and unicode
+    """
+    # the model and class dict come as parameters
+    # make a list of all kanji images and another of their names
+    bs = 64
+
+    imNames = []
+    ims = []
+    for dirpath, dnames, fnames in os.walk(inFolder):
+        for f in fnames:
+            # ignore "context" images
+            if "CONTEXT" not in f:
+                ims.append(read_Binary_Mask(os.path.join(inFolder,f)))
+                imNames.append(f)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # create Dataset and dataloader  so that it can be fed to the GPU
+    dummyDS = tDataset(ims,weights.transforms())
+    dummyDL = torch.utils.data.DataLoader(dummyDS, batch_size=bs, shuffle=False)
+
+    with torch.no_grad():
+        for inputs,targets in dummyDL:
+            if torch.cuda.is_available():
+                inputs = inputs.to(device)
+                outputs = model(inputs)
+                _, preds = torch.max(outputs, 1)
+                print(preds)
+
 
 def train(model, criterion, optimizer, dataloader, sizes, device):
 
@@ -176,6 +214,84 @@ def plot_loss_acc(history, model, num_epochs):
 
     plt.savefig(f'result_{model.__class__.__name__}.jpg')
 
+def loadModelReadClassDict(arch,modelFile,cDfile):
+    """
+    Reads a class dictionary from a problem
+    as well as a model file given its architecture
+    """
+    # first, read class dictionary
+    with open(cDfile) as f:
+        classDict = { line.strip().split(",")[0]:line.strip().split(",")[1] for line in f.readlines() }
+    outputNumClasses =len(classDict)
+    #print(outputNumClasses)
+
+    if arch == "resnet":
+        weights = models.ResNet50_Weights.DEFAULT
+        model_ft = models.resnet50(weights=weights)
+    elif arch == "swimt":
+        weights = models.Swin_T_Weights.DEFAULT
+        model_ft = models.swin_t(weights=weights)
+    elif arch == "swims":
+        weights = models.Swin_S_Weights.DEFAULT
+        model_ft = models.swin_s(weights=weights)
+    elif arch == "swimb":
+        weights = models.Swin_B_Weights.DEFAULT
+        model_ft = models.swin_b(weights=weights)
+        # swim B needs smaller batch size because of memory requirements
+        bs = 16
+    elif arch == "vitb16":
+        weights = models.ViT_B_16_Weights.DEFAULT
+        model_ft = models.vit_b_16(weights=weights)
+    elif arch == "vitb32":
+        weights = models.ViT_B_32_Weights.DEFAULT
+        model_ft = models.vit_b_32(weights=weights)
+    elif arch == "vith14":
+        weights = models.ViT_H_14_Weights.DEFAULT
+        model_ft = models.vit_h_14(weights=weights)
+    elif arch == "vitl16":
+        weights = models.ViT_L_16_Weights.DEFAULT
+        model_ft = models.vit_l_16(weights=weights)
+    elif arch == "vitl32":
+        weights = models.ViT_L_32_Weights.DEFAULT
+        model_ft = models.vit_l_32(weights=weights)
+    elif arch == "convnexts":
+        weights = models.convnext.ConvNeXt_Small_Weights.DEFAULT
+        model_ft = models.convnext_small(weights=weights)
+    elif arch == "convnextt":
+        weights = models.convnext.ConvNeXt_Tiny_Weights.DEFAULT
+        model_ft = models.convnext_tiny(weights=weights)
+    elif arch == "convnextb":
+        weights = models.convnext.ConvNeXt_Base_Weights.DEFAULT
+        model_ft = models.convnext_base(weights=weights)
+        bs = 16
+    elif arch == "convnextl":
+        weights = models.convnext.ConvNeXt_Large_Weights.DEFAULT
+        model_ft = models.convnext_large(weights=weights)
+        bs = 8
+    else: raise Exception("Unrecognized architecture")
+
+    # Adapt the model to our number of classes, depending on the architecture
+    if arch == "resnet":
+        num_ftrs = model_ft.fc.in_features
+        model_ft.fc = nn.Linear(num_ftrs, outputNumClasses)
+    elif arch == "swimt" or arch == "swims" or arch == "swimb" :
+        num_ftrs = model_ft.head.in_features
+        model_ft.head = nn.Linear(num_ftrs, outputNumClasses)
+    elif arch == "vitb16" or arch == "vitb32" or arch == "vith14" or arch == "vitl16" or arch == "vitl32" :
+        num_ftrs = model_ft.heads[0].in_features
+        model_ft.heads[0] = nn.Linear(num_ftrs, outputNumClasses)
+    elif arch == "convnexts" or arch =="convnextt" or arch =="convnextb" or arch =="convnextl":
+        num_ftrs = model_ft.classifier[-1].in_features
+        model_ft.classifier[-1] = nn.Linear(num_ftrs, outputNumClasses)
+
+    #load model
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model_ft = model_ft.to(device)
+
+    model_ft.load_state_dict(torch.load(modelFile, map_location=device))
+    return model_ft,weights,classDict
+
 def main(argv):
 
     arch = "resnet"
@@ -301,4 +417,6 @@ def main(argv):
     plot_loss_acc(history, model_ft, epo)
 
 if __name__ == '__main__':
-    main(sys.argv)
+    mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
+    testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
+    #main(sys.argv)

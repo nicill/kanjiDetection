@@ -9,6 +9,29 @@ import torch
 from torch.utils.data.dataset import Dataset
 #from data_manipulation.datasets import get_slices_bb
 
+class tDataset(Dataset):
+    # Given a list of images, create a simple dataset with empty labels
+    # this is for testing purposes, to have the dataset format
+    # for lists of images
+
+    def __init__(self,imageList,transform = None):
+        # Data Structures:
+        self.imageList = [np.moveaxis(im,-1,0) for im in  imageList]
+        self.labelList = ["nolabel"]*len(imageList) # a list to store our labels
+        self.transform = transform
+        #print(self.transform)
+
+    def __getitem__(self, index):
+            # We will need to transform our images to torch tensors
+            currentImage = torch.from_numpy(self.imageList[index].astype(np.float32)) # transform to torch tensor with floats
+            if self.transform :
+                currentImage = self.transform(currentImage) # apply transforms that may be necessary to
+            inputs = currentImage
+            return inputs, self.labelList[index]
+    def __len__(self):
+        return len(self.imageList)
+
+
 class CPDataset(Dataset):
     # Given a folder containing files stored following a certain regular expression,
     # Load all image files from the folder, put them into a list
