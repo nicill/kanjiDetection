@@ -79,7 +79,7 @@ class CPDataset(Dataset):
             # We will need to transform our images to torch tensors
             currentImage = torch.from_numpy(currentImage.astype(np.float32)) # transform to torch tensor with floats
             if self.transform :
-                currentImage = self.transform(currentImage) # applly transforms that may be necessary to
+                currentImage = self.transform(currentImage) # apply transforms that may be necessary to
 
             inputs = currentImage
 

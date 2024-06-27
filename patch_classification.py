@@ -14,7 +14,8 @@ import sys
 import numpy as np
 from collections import defaultdict
 from datasets import CPDataset,tDataset
-from imageUtils import read_Binary_Mask
+from imageUtils import read_Color_Image
+import ftfy
 
 
 def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
@@ -28,7 +29,24 @@ def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
     """
     # the model and class dict come as parameters
     # make a list of all kanji images and another of their names
+    def toUnicode(s):
+        """
+        transform a class code into
+        a printable unicode character
+        """
+        return chr(int(s[2:],16))
+    def formatOut(aList):
+        """
+        Simple function to return a list of
+        values in pretty text format
+        """
+        retString = ""
+        for x in aList[::-1]:
+            retString += ","+toUnicode(classDict[x])
+        return retString
     bs = 64
+    showPreds = 5
+    model.eval()
 
     imNames = []
     ims = []
@@ -36,7 +54,7 @@ def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
         for f in fnames:
             # ignore "context" images
             if "CONTEXT" not in f:
-                ims.append(read_Binary_Mask(os.path.join(inFolder,f)))
+                ims.append(read_Color_Image(os.path.join(inFolder,f)))
                 imNames.append(f)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,14 +62,20 @@ def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
     dummyDS = tDataset(ims,weights.transforms())
     dummyDL = torch.utils.data.DataLoader(dummyDS, batch_size=bs, shuffle=False)
 
+    totalPreds = []
     with torch.no_grad():
         for inputs,targets in dummyDL:
             if torch.cuda.is_available():
                 inputs = inputs.to(device)
                 outputs = model(inputs)
-                _, preds = torch.max(outputs, 1)
-                print(preds)
-
+                #_, preds = torch.max(outputs, 1)
+                preds = torch.argsort(outputs, 1)
+                totalPreds.extend(preds.to('cpu').detach().numpy().copy())
+    #print(totalPreds)
+    # now write the predictions to file
+    with open(outFileName, mode='w', encoding="utf-8") as f:
+        for i in range(len(imNames)):
+            f.write(imNames[i]+formatOut(totalPreds[i][-showPreds:])+"\n")
 
 def train(model, criterion, optimizer, dataloader, sizes, device):
 
@@ -221,7 +245,7 @@ def loadModelReadClassDict(arch,modelFile,cDfile):
     """
     # first, read class dictionary
     with open(cDfile) as f:
-        classDict = { line.strip().split(",")[0]:line.strip().split(",")[1] for line in f.readlines() }
+        classDict = { int(line.strip().split(",")[0]):line.strip().split(",")[1] for line in f.readlines() }
     outputNumClasses =len(classDict)
     #print(outputNumClasses)
 
