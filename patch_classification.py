@@ -15,8 +15,6 @@ import numpy as np
 from collections import defaultdict
 from datasets import CPDataset,tDataset
 from imageUtils import read_Color_Image
-import ftfy
-
 
 def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
     """
@@ -441,6 +439,6 @@ def main(argv):
     plot_loss_acc(history, model_ft, epo)
 
 if __name__ == '__main__':
-    mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
-    testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
-    #main(sys.argv)
+    #mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
+    #testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
+    main(sys.argv)
