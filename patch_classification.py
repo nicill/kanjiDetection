@@ -14,7 +14,7 @@ import sys
 import numpy as np
 from collections import defaultdict
 from datasets import CPDataset,tDataset
-from imageUtils import read_Color_Image
+from imageUtils import read_Binary_Mask
 import ftfy
 
 
@@ -29,6 +29,17 @@ def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
     """
     # the model and class dict come as parameters
     # make a list of all kanji images and another of their names
+    def firstRow(num):
+        """
+        create a simple
+        string for the first
+        row in the file
+        """
+        ret="imageName"
+        for i in range(num):
+            ret+=","+"Pred"+str(i+1)
+        return ret+"\n"
+
     def toUnicode(s):
         """
         transform a class code into
@@ -54,7 +65,7 @@ def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
         for f in fnames:
             # ignore "context" images
             if "CONTEXT" not in f:
-                ims.append(read_Color_Image(os.path.join(inFolder,f)))
+                ims.append(read_Binary_Mask(os.path.join(inFolder,f)))
                 imNames.append(f)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -74,6 +85,8 @@ def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
     #print(totalPreds)
     # now write the predictions to file
     with open(outFileName, mode='w', encoding="utf-8") as f:
+        # write first line
+        f.write(firstRow(showPreds))
         for i in range(len(imNames)):
             f.write(imNames[i]+formatOut(totalPreds[i][-showPreds:])+"\n")
 
@@ -441,6 +454,6 @@ def main(argv):
     plot_loss_acc(history, model_ft, epo)
 
 if __name__ == '__main__':
-    mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
-    testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
-    #main(sys.argv)
+    #mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
+    #testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
+    main(sys.argv)

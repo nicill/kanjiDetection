@@ -7,30 +7,6 @@ import cv2
 
 import torch
 from torch.utils.data.dataset import Dataset
-#from data_manipulation.datasets import get_slices_bb
-
-class tDataset(Dataset):
-    # Given a list of images, create a simple dataset with empty labels
-    # this is for testing purposes, to have the dataset format
-    # for lists of images
-
-    def __init__(self,imageList,transform = None):
-        # Data Structures:
-        self.imageList = [np.moveaxis(im,-1,0) for im in  imageList]
-        self.labelList = ["nolabel"]*len(imageList) # a list to store our labels
-        self.transform = transform
-        #print(self.transform)
-
-    def __getitem__(self, index):
-            # We will need to transform our images to torch tensors
-            currentImage = torch.from_numpy(self.imageList[index].astype(np.float32)) # transform to torch tensor with floats
-            if self.transform :
-                currentImage = self.transform(currentImage) # apply transforms that may be necessary to
-            inputs = currentImage
-            return inputs, self.labelList[index]
-    def __len__(self):
-        return len(self.imageList)
-
 
 class CPDataset(Dataset):
     # Given a folder containing files stored following a certain regular expression,
@@ -54,15 +30,17 @@ class CPDataset(Dataset):
                     # For every file, get its category
                     currentClass = root.split(os.sep)[-1]
 
-                    # Read the file as an opencv image
-                    currentImage = cv2.imread(os.path.join(root,f))
+                    # Read the file as a grayscale opencv image
+                    currentImage = cv2.imread(os.path.join(root,f),0)
                     if currentImage is None: raise Exception("CPDataset Constructor, problems reading file "+f)
+
+                    # now binarize strictly
+                    currentImage[currentImage<=100] = 0
+                    currentImage[currentImage>100] = 255
 
                     # Now be careful, pytorch needs the pixel dimension at the start,
                     # so we have to change the way the images are stored (moveaxis)
                     # We also store the image in the image list
-                    currentImage = np.moveaxis(currentImage,-1,0)
-                    currentImage = currentImage[:,:,::-1] #change from BGR to RGB
                     self.imageList.append(currentImage)
 
                     # Finally, maintain a class dictionary, the codes of the
@@ -75,7 +53,10 @@ class CPDataset(Dataset):
 
             # When we call getitem, we will generally be passing a piece of data to pytorch
             # First, simply retrieve the proper image from the list of images
-            currentImage = self.imageList[index]
+            currentImage = cv2.cvtColor(self.imageList[index],cv2.COLOR_GRAY2RGB)
+            currentImage = np.moveaxis(currentImage,-1,0)
+            #currentImage = currentImage[:,:,::-1] #change from BGR to RGB
+
             # We will need to transform our images to torch tensors
             currentImage = torch.from_numpy(currentImage.astype(np.float32)) # transform to torch tensor with floats
             if self.transform :
@@ -116,6 +97,18 @@ class CPDataset(Dataset):
             train.labelList.append(toDivide[i][1])
 
         return train,valid
+
+class tDataset(CPDataset):
+    # Given a list of images, create a simple dataset with empty labels
+    # this is for testing purposes, to have the dataset format
+    # for lists of binarized grayscale images
+
+    def __init__(self,imageList,transform = None):
+        # Data Structures:
+        self.imageList = imageList
+        self.labelList = ["nolabel"]*len(imageList) # a list to store our labels
+        self.transform = transform
+        #print(self.transform)
 
 
 if __name__ == '__main__':
