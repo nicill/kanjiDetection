@@ -27,20 +27,6 @@ def read_Binary_Mask(path):
     retVal[retVal>50] = 255
     return retVal
 
-def gatherCharacters(source,dest):
-    """
-        Function to traverse all the "full"
-        koutenshiki data base, traverse
-        "characters" folders in the book
-        subfolders and copy them while merging
-        the same unicode character subfolders
-    """
-    for root, dirs, files in os.walk("."):
-        path = root.split(os.sep)
-        if len(path) > 1 and path[-2] == "characters":
-            shutil.copytree(root, os.path.join(dest,path[-1]),dirs_exist_ok=True)
-
-
 def sliding_window(image, stepSize, windowSize):
     # slide a window across the image
     for y in range(0, image.shape[0], stepSize):
