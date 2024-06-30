@@ -15,7 +15,6 @@ import numpy as np
 from collections import defaultdict
 from datasets import CPDataset,tDataset
 from imageUtils import read_Binary_Mask
-import ftfy
 
 
 def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
