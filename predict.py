@@ -88,7 +88,7 @@ def boxesToTextFile(result,file):
 def boxesToMaskFile(result,file,shape):
     """
     Receive a sahi prediction object and write
-    the context to a Binary
+    the context to a Binary image
     """
     def paintBox(x):
         """
@@ -104,6 +104,26 @@ def boxesToMaskFile(result,file,shape):
     with open(file,'w+') as f:
         list(map(paintBox,result.object_prediction_list))
         cv2.imwrite(file,im)
+
+def boxesToPointsFile(result,file,shape):
+    """
+    Receive a sahi prediction object and write
+    the context to a Binary
+    """
+    def paintCircle(x):
+        """
+        Inner function to paint the info of
+        a box into a circle
+        """
+        nonlocal im
+        x,y,w,h =  x.bbox.to_xywh()
+        cv2.circle(im, (int(x), int(y)), 5, 0, -1)
+
+    im = 255*np.ones((shape[0],shape[1]), np.uint8)
+    with open(file,'w+') as f:
+        list(map(paintCircle,result.object_prediction_list))
+        cv2.imwrite(file,im)
+
 
 def testFileList(folder):
     #print(folder)
