@@ -3,6 +3,7 @@ import cv2
 import sys
 from math import sqrt
 import os
+from pathlib import Path
 
 def read_Color_Image(path):
     #Read tif image or png image
@@ -73,6 +74,8 @@ def predictionsToKanjiImages(im,mask,path,imCode,storeContext=False):
                         "CONTEXT"+imCode+"kanjiX"+str(x)+"Y"+str(y)+"H"+str(h)+"W"+str(w)+".jpg")
                         ,subImC)
 
+    # create output folder if necessary
+    Path(path).mkdir(parents=True, exist_ok=True)
 
     # Threshold  the image to make sure it is binary
     contextSize = 500
@@ -195,5 +198,5 @@ def boxesFound(im1, im2, verbose = False):
 if __name__ == '__main__':
     im = read_Binary_Mask(sys.argv[1])
     mask = read_Binary_Mask(sys.argv[2])
-    folder = "./OU/"
+    folder = sys.argv[3]
     predictionsToKanjiImages(im, mask,folder,os.path.basename(sys.argv[1])[:-4],True)

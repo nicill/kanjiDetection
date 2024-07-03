@@ -384,7 +384,7 @@ def main(argv):
         weights = models.convnext.ConvNeXt_Large_Weights.DEFAULT
         model_ft = models.convnext_large(weights=weights)
         bs = 8
-    else: raise Exception("Unrecognized architecture")
+    else: raise Exception("Unrecognized architecture "+str(arch))
 
     print("using architecture "+arch)
 
@@ -403,7 +403,7 @@ def main(argv):
     #n_train=len(dataset) - n_val
     #print("the number of train dataset is "+str(n_train)+", the number of validation dataset is "+str(n_val))
     #train_dataset, val_dataset = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(0))
-    proportion = 0.2
+    proportion = 0.1
     train_dataset, val_dataset = dataset.breakTrainValid(proportion)
     print("the size of the train dataset is "+str(len(train_dataset))+", the number of validation dataset is "+str(len(val_dataset)))
 
@@ -453,6 +453,6 @@ def main(argv):
     plot_loss_acc(history, model_ft, epo)
 
 if __name__ == '__main__':
-    #mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
-    #testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
-    main(sys.argv)
+    mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
+    testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
+    #main(sys.argv)
