@@ -46,6 +46,7 @@ def read_config(filename):
     res_dict["models"] = conf[section].get('modelist').strip().split(",")
     res_dict["Pred_dir"] = conf[section].get('predDir')
     res_dict["Exp_dir"] = conf[section].get('expDir')
+    res_dict["Masks_dir"] = conf[section].get('newMasksDir')
 
     return res_dict
 

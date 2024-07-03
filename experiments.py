@@ -13,7 +13,7 @@ from itertools import product
 
 from main import read_config
 from predict import detectBlobsMSER,detectBlobsDOG
-from imageUtils import boxesFound,read_Binary_Mask
+from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
 
 def makeParamDicts(pars,vals):
     """
@@ -27,6 +27,54 @@ def makeParamDicts(pars,vals):
     prod = list(product(*vals))
     res = [dict(zip(pars,tup)) for tup in prod]
     return res
+
+def computeAndCombineMasks(file):
+    """
+    Receive a folder, compute all the masks for
+    all files for two methods, MSER and DOG
+    """
+    conf = read_config(file)
+    print(conf)
+
+    imageFolder = conf["Train_input_dir_images"]
+    maskFolder = conf["Train_input_dir_masks"]
+    outFolder = conf["Masks_dir"]
+
+    # make experiments directory if it did not exist
+    Path(outFolder).mkdir(parents=True, exist_ok=True)
+
+    # params
+    parDictDOG = {"over":0.5,"min_s":20,"max_s":100}
+    parDictMSER = {'delta': 5, "minA": 500,"maxA": 25000}
+
+    # traverse image folder
+    for dirpath, dnames, fnames in os.walk(imageFolder):
+        for f in fnames:
+            print("processing "+f)
+            # for each image, check if it has been noise removed
+            # and if it has a mask
+            if "noiseRemoval" in str(f):
+                maskName = "KP"+str(f[:-30])+"AN.jpg"
+                if not Path(os.path.join(maskFolder,maskName)).is_file():
+                    # do only images that have no original annotation mask
+                    print("doing this one")
+                    # we now have a function with ground truth
+                    im = read_Binary_Mask(os.path.join(imageFolder,f))
+
+                    # detec MSER
+                    outMaskMSER = detectBlobsMSER(im,parDictMSER)
+                    #cv2.imwrite(os.path.join(outFolder,"MASKMSER"+f+".png"), outMaskMSER )
+
+                    # detectDOG
+                    outMaskDOG = detectBlobsDOG(im,parDictDOG)
+                    #cv2.imwrite(os.path.join(outFolder,"MASKDOG"+f+".png"),outMaskDOG )
+
+                    # yolo masks are precomputed
+                    yoloMask = cv2.imread(os.path.join(outFolder,"MASKcombined_data_200ex_"+str(f)+".png"),0)
+
+                    recoupedMask = recoupMasks([outMaskDOG,outMaskMSER,yoloMask],[1,1,2],2)
+                    cv2.imwrite(os.path.join(outFolder,"RECOUP"+f+".png"),recoupedMask )
+
 
 def main(fName):
     """
@@ -127,7 +175,8 @@ if __name__ == "__main__":
 
     # Configuration file name, can be entered in the command line
     configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
-    main(configFile)
+    computeAndCombineMasks(configFile)
+    #main(configFile)
 
 
 
@@ -135,4 +184,3 @@ if __name__ == "__main__":
     #DOG 77.5665178571429	 {'over': 0.5;min_s': 20;max_s': 100}
 
     # MSER 72.6126785714286	 {'delta': 5;minA': 500;maxA': 25000}
-
