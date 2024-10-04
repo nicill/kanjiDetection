@@ -76,7 +76,7 @@ def selectKanjiFromFile(inFile,inFolder,outFolder,etl = False):
                 if Path(dirName).is_dir():
                     countYes+=1
                     #print(str(dirName)+"EXISTS!!!!!!!!!!!!!!!!!")
-                    print("copy to "+str(os.path.join(outFolder,code)))
+                    #print("copy to "+str(os.path.join(outFolder,code)))
                     shutil.copytree(dirName, os.path.join(outFolder,code), dirs_exist_ok=True)  # Fine
                 else:
                     countNo+=1

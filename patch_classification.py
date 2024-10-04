@@ -331,7 +331,7 @@ def loadModelReadClassDict(arch,modelFile,cDfile):
 def main(argv):
 
     arch = "resnet"
-    bs = 64 #default batch size
+    bs = 256 #default batch size
 
     if len(argv)>2: arch = argv[2]
 
@@ -453,6 +453,6 @@ def main(argv):
     plot_loss_acc(history, model_ft, epo)
 
 if __name__ == '__main__':
-    mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
-    testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
-    #main(sys.argv)
+    #mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
+    #testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
+    main(sys.argv)
