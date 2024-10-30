@@ -274,7 +274,7 @@ def loadModelReadClassDict(arch,modelFile,cDfile):
         weights = models.Swin_B_Weights.DEFAULT
         model_ft = models.swin_b(weights=weights)
         # swim B needs smaller batch size because of memory requirements
-        bs = 16
+        #bs = 16
     elif arch == "vitb16":
         weights = models.ViT_B_16_Weights.DEFAULT
         model_ft = models.vit_b_16(weights=weights)
@@ -299,11 +299,11 @@ def loadModelReadClassDict(arch,modelFile,cDfile):
     elif arch == "convnextb":
         weights = models.convnext.ConvNeXt_Base_Weights.DEFAULT
         model_ft = models.convnext_base(weights=weights)
-        bs = 16
+        #bs = 16
     elif arch == "convnextl":
         weights = models.convnext.ConvNeXt_Large_Weights.DEFAULT
         model_ft = models.convnext_large(weights=weights)
-        bs = 8
+        #bs = 8
     else: raise Exception("Unrecognized architecture")
 
     # Adapt the model to our number of classes, depending on the architecture
@@ -332,9 +332,13 @@ def train_outer(argv):
     print(argv)
     arch = "resnet"
     bs = 256 #default batch size
+    # set epochs 
+    epo = 10
+
 
     if len(argv)>2: arch = argv[2]
     if len(argv)>3: bs = argv[3]
+    if len(argv)>4: epo = argv[4]
 
     #model definition
     if arch == "resnet":
@@ -355,7 +359,7 @@ def train_outer(argv):
         weights = models.Swin_B_Weights.DEFAULT
         model_ft = models.swin_b(weights=weights)
         # swim B needs smaller batch size because of memory requirements
-        bs = 16
+        #bs = 16
     elif arch == "vitb16":
         weights = models.ViT_B_16_Weights.DEFAULT
         model_ft = models.vit_b_16(weights=weights)
@@ -380,11 +384,11 @@ def train_outer(argv):
     elif arch == "convnextb":
         weights = models.convnext.ConvNeXt_Base_Weights.DEFAULT
         model_ft = models.convnext_base(weights=weights)
-        bs = 16
+        #bs = 16
     elif arch == "convnextl":
         weights = models.convnext.ConvNeXt_Large_Weights.DEFAULT
         model_ft = models.convnext_large(weights=weights)
-        bs = 8
+        #bs = 8
     else: raise Exception("Unrecognized architecture "+str(arch))
 
     print("using architecture "+arch)
@@ -442,9 +446,6 @@ def train_outer(argv):
 
     # Observe that all parameters are being optimized
     optimizer_ft = optim.Adamax(model_ft.parameters(), lr=0.0002)
-
-    # set epoch sizes
-    epo = 10
 
     # ResNet50
     _,history = train_model(
