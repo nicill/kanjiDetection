@@ -334,6 +334,7 @@ def train_outer(argv):
     bs = 256 #default batch size
 
     if len(argv)>2: arch = argv[2]
+    if len(argv)>3: arch = argv[3]
 
     #model definition
     if arch == "resnet":
