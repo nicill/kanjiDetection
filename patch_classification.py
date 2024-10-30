@@ -328,7 +328,7 @@ def loadModelReadClassDict(arch,modelFile,cDfile):
     model_ft.load_state_dict(torch.load(modelFile, map_location=device))
     return model_ft,weights,classDict
 
-def main(argv):
+def train_outer(argv):
 
     arch = "resnet"
     bs = 256 #default batch size

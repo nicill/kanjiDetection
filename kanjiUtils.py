@@ -23,8 +23,8 @@ def gatherCharacters(source,dest):
 
 def makeKoutenshiki(source,dest,th = 9):
     """
-        Copy folders not containing hiragana and 
-        with at least th files 
+        Copy folders not containing hiragana and
+        with at least th files
     """
     codeDict = defaultdict(lambda:0)
     # create dict with codes
@@ -32,33 +32,33 @@ def makeKoutenshiki(source,dest,th = 9):
                     'U+{:04X}'.format(i)
                     for i in range(0x3040, 0x30A0)
                 ]
-
-    for root, dirs, files in os.walk("."):
+    for root, dirs, files in os.walk(source):
         path = root.split(os.sep)
 
         for f in files:
-            if len(path) > 1 and path[-2] == "characters":
+            #if len(path) > 1 and path[-2] == "characters":
+            if len(path) > 1 :
                 code = path[-1]
                 if code not in avoid_list:
                     codeDict[code]+=1
                 #else:
                 #    print("avoiding "+code)
-            #if int(3040   int(code) != "30" and more files than th                
+            #if int(3040   int(code) != "30" and more files than th
             #    shutil.copytree(root, os.path.join(dest,path[-1]),dirs_exist_ok=True)
-    #print(codeDict)
+    print(codeDict)
     # now only copy those with at least th repetitions as shown in codeDict
     for k,v in codeDict.items():
         if v > th:
-            print("copy "+k+" to "+str(os.path.join(dest,k))+ "because of having "+str(v))    
+            print("copy "+k+" to "+str(os.path.join(dest,k))+ "because of having "+str(v))
             shutil.copytree(os.path.join(source,k), os.path.join(dest,k),dirs_exist_ok=True)
 
 
 
 def selectKanjiFromFile(inFile,inFolder,outFolder,etl = False):
     """
-        First, read a file written in kanji and 
+        First, read a file written in kanji and
         store all characters in a dictionary
-        if the kanji come from the etl database the names 
+        if the kanji come from the etl database the names
         of the folders are slightly different and need
         to be changed
     """
@@ -66,7 +66,7 @@ def selectKanjiFromFile(inFile,inFolder,outFolder,etl = False):
     countYes = 0
     countNo = 0
     with open(inFile) as f:
-        while True:    
+        while True:
             c = f.read(1)
             if c != os.linesep and c!= " " and c and not c in charDict:
                 code = "U+"+str(hex(ord(c)))[2:].upper()
