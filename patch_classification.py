@@ -329,7 +329,7 @@ def loadModelReadClassDict(arch,modelFile,cDfile):
     return model_ft,weights,classDict
 
 def train_outer(argv):
-
+    print(argv)
     arch = "resnet"
     bs = 256 #default batch size
 
