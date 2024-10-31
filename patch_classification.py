@@ -222,7 +222,7 @@ def train_model(model, criterion, optimizer, dataloaderTrain, dataloaderTest, si
     print('Best val Acc: {:6f}'.format(best_acc))
 
     # save best model weights
-    pth = f'best_wts_arch_epo'+str(num_epochs)+'.pth'
+    pth = "best_wts_"+arch+"_epo"+str(num_epochs)+".pth"
     new_pth = duplicate_rename(pth)
 
     if save_model:
