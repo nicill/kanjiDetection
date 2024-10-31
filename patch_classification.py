@@ -182,7 +182,7 @@ def duplicate_rename(file_path):
     else:
         return file_path
 
-def train_model(model, criterion, optimizer, dataloaderTrain, dataloaderTest, sizeTrain, sizeTest, device, num_epochs=25, save_model=True):
+def train_model(model, criterion, optimizer, dataloaderTrain, dataloaderTest, sizeTrain, sizeTest, device, arch, num_epochs=25, save_model=True):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -222,7 +222,7 @@ def train_model(model, criterion, optimizer, dataloaderTrain, dataloaderTest, si
     print('Best val Acc: {:6f}'.format(best_acc))
 
     # save best model weights
-    pth = f'best_wts_{model.__class__.__name__}50_epo'+str(num_epochs)+'.pth'
+    pth = f'best_wts_arch_epo'+str(num_epochs)+'.pth'
     new_pth = duplicate_rename(pth)
 
     if save_model:
@@ -332,7 +332,7 @@ def train_outer(argv):
     print(argv)
     arch = "resnet"
     bs = 256 #default batch size
-    # set epochs 
+    # set epochs
     epo = 10
 
 
@@ -450,7 +450,7 @@ def train_outer(argv):
     # ResNet50
     _,history = train_model(
                         model_ft, criterion, optimizer_ft, dataloaders_train, dataloaders_val,
-                        dataset_train_sizes, dataset_val_sizes, device, epo, True
+                        dataset_train_sizes, dataset_val_sizes, device, arch, epo, True
                         )
     plot_loss_acc(history, model_ft, epo)
 
