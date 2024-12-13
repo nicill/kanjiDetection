@@ -67,14 +67,14 @@ def train_pytorchModel(folder, num_epochs = 10, proportion = 0.9):
 
     # save model
     file_path = "fasterrcnn_resnet50_fpn.pth"
-    trainAgain = True
-    
+    trainAgain = False
+
     # our dataset has two classes only - background and person
     num_classes = 2
     bs = 16
     # use our dataset and defined transformations
-    dataset = ODDataset(sys.argv[1],1500, get_transform(train=True))
-    dataset_test = ODDataset(sys.argv[1],1500, get_transform(train=True))
+    dataset = ODDataset(sys.argv[1],1500, get_transform())
+    dataset_test = ODDataset(sys.argv[1],1500, get_transform())
 
     # split the dataset in train and test set
     indices = torch.randperm(len(dataset)).tolist()
@@ -230,10 +230,8 @@ def get_model_instance_segmentation(num_classes):
 
     return model
 
-def get_transform(train):
+def get_transform():
     transforms = []
-    if train:
-        transforms.append(T.RandomHorizontalFlip(0.5))
     transforms.append(T.ToDtype(torch.float, scale=True))
     transforms.append(T.ToPureTensor())
     return T.Compose(transforms)
