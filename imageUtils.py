@@ -85,6 +85,26 @@ def predictionsToKanjiImages(im,mask,path,imCode,storeContext=False):
     #traverse all labels but ignore label 0 as it contains the background
     list(map(processComponent,range(1,numLabels)))
 
+def cleanUpMask(mask, areaTH = 100, thicknessTH = 20):
+    """
+    Receive a Mask with the position of kanji
+    erase regions that are too small or not fat enough
+    """
+    # Binarize, just in case
+    mask[mask<=10] = 0
+    mask[mask>10] = 255
+    numLabels, labelIm, stats, centroids = cv2.connectedComponentsWithStats(255-mask)
+
+    #print(np.unique(labelIm))
+    #print(np.sum(mask==0))
+    # Avoid first centroid, unbounded component
+    for j in range(1,len(np.unique(labelIm))):
+        if stats[j][4] < areaTH or stats[j][2] < thicknessTH or stats[j][3] < thicknessTH:
+            mask[labelIm == j] = 255
+            #print("erasing "+str(j))
+            #print(np.sum(mask==0))
+
+
 def recoupMasks(masks, weights, th):
     """
     Function to combine a list of
@@ -193,6 +213,89 @@ def boxesFound(im1, im2, verbose = False):
         return 100 * count/totalBoxes
     else:
         return 0
+
+def boxListEvaluation(bPred, bGT,th = 50):
+    """
+        receives two lists of boxes (predicted and ground truth)
+        in x1,y1,x2,y2 format and outputs precision, recall,
+    """
+    def center(b):
+        """
+            returns the center of a box in x1,y1,x2,y2 format
+        """
+        return b[0]+(b[2]-b[0])/2,b[1]+(b[3]-b[1])/2
+    def isTrueP(b,gtB):
+        """
+            goes over all boxes in the ground truth and checks
+            if they overlap with the current box more than the threshold
+        """
+        for box in gtB:
+            op = overlappingAreaPercentage(b,box)
+            #print("overlap percentage "+str(op))
+            if op>th: return True
+        return False
+
+
+    def overlappingAreaPercentage(b1, b2):
+        """
+        Compute the percentage of overlap of rect1 over rect2.
+
+        Parameters:
+            rect1: tuple (xmin, ymin, xmax, ymax) - First rectangle
+            rect2: tuple (xmin, ymin, xmax, ymax) - Second rectangle
+
+        Returns:
+            float: Percentage of overlap (0-100) of rect1 over rect2.
+        """
+        # Extract coordinates
+        x1_min, y1_min, x1_max, y1_max = b1
+        x2_min, y2_min, x2_max, y2_max = b2
+
+        # Compute the intersection rectangle
+        inter_xmin = max(x1_min, x2_min)
+        inter_ymin = max(y1_min, y2_min)
+        inter_xmax = min(x1_max, x2_max)
+        inter_ymax = min(y1_max, y2_max)
+
+        # Compute width and height of the intersection rectangle
+        inter_width = max(0, inter_xmax - inter_xmin)
+        inter_height = max(0, inter_ymax - inter_ymin)
+
+        # Compute the area of intersection
+        inter_area = inter_width * inter_height
+
+        # Compute the area of the second rectangle (rect2)
+        rect2_area = max(0, x2_max - x2_min) * max(0, y2_max - y2_min)
+
+        # Avoid division by zero
+        if rect2_area == 0:
+            return 0.0
+
+        # Calculate the overlap percentage
+        overlap_percentage = (inter_area / rect2_area) * 100
+
+        return overlap_percentage
+
+    num_tp = 0
+    for box in bPred:
+        # decide if it is a TP or FP.
+        isTP = isTrueP(box,bGT)
+        if isTP: num_tp+=1
+
+    print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
+    recall = num_tp/len(bGT)
+    precision = num_tp/len(bPred)
+
+    return precision,recall
+
+    def outputPytorchOBResultImages(output):
+        """
+            receive an output tensor from a pytorch
+            object detector, ouput images with boxes as squares
+            ouput is a dictionary with "images" and "boxes"
+        """
+        #for im in
+        pass
 
 
 if __name__ == '__main__':

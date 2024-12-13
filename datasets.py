@@ -8,6 +8,15 @@ import cv2
 import torch
 from torch.utils.data.dataset import Dataset
 
+from torchvision import tv_tensors
+from torchvision.transforms.v2 import functional as F
+
+from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask, cleanUpMask
+from buildTrainValidation import boxesFromMask
+from pathlib import Path
+
+from PIL import Image
+
 class CPDataset(Dataset):
     # Given a folder containing files stored following a certain regular expression,
     # Load all image files from the folder, put them into a list
@@ -109,9 +118,132 @@ class tDataset(CPDataset):
         self.labelList = ["nolabel"]*len(imageList) # a list to store our labels
         self.transform = transform
         #print(self.transform)
+# sources
+# https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
+# https://pytorch.org/vision/main/models.html
+class ODDataset(Dataset):
+    """
+        Dataset for object detection with
+        pytorch predefined networks
+    """
+    def __init__(self, dataFolder = None, slice = 500 , transform = None):
+        """
+            Receive a folder, should have an "images" and a "masks"
+            subfolders with images with pre-defined names
+            read all images and masks there, slice them
+            with the size given and create a new folder "forOD"
+            with the cut masks and images.
+
+            Store all image and mask paths in two list of names
+        """
+
+        # Data Structures:
+        self.imageNameList = []
+        self.maskNameList = []
+        self.transform = transform
+
+        imageFolder = os.path.join(dataFolder,"images")
+        maskFolder = os.path.join(dataFolder,"masks")
+
+        # create output Folder if it does not exist
+        self.outFolder = os.path.join(dataFolder,"forOD")
+
+        Path(self.outFolder).mkdir(parents=True, exist_ok=True)
+
+        for dirpath, dnames, fnames in os.walk(maskFolder):
+            for f in fnames:
+                #print(os.path.join(maskFolder,f))
+                # read mask and image, everyone is binary
+                mask = read_Binary_Mask(os.path.join(maskFolder,f))
+                imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
+                im = read_Binary_Mask(os.path.join(imageFolder,imageName))
+                #print(os.path.join(maskFolder,f))
+                #print(os.path.join(imageFolder,imageName))
+
+                # slice mask and image together, store them in the forOD folder
+                wSize = (slice,slice)
+                count = 0
+                for (x, y, window) in sliding_window(im, stepSize = int(slice*0.8), windowSize = wSize ):
+                    # get mask window
+                    if window.shape == (slice,slice) :
+                        # this should be done better, with padding!, maybe https://docs.opencv.org/3.4/dc/da3/tutorial_copyMakeBorder.html
+                        maskW = mask[y:y + wSize[1], x:x + wSize[0]]
+                        # discard empty masks
+                        cleanUpMask(maskW)
+                        if np.sum(maskW==0) > 100:
+                            # store them both
+                            cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
+                            self.imageNameList.append( os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png") )
+                            cv2.imwrite(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"),maskW)
+                            self.maskNameList.append(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"))
+
+                            count+=1
+
+    def __getitem__(self, idx):
+        # load images and masks
+        img_path = self.imageNameList[idx]
+        mask_path = self.maskNameList[idx]
+        img = Image.open(img_path).convert("RGB")
+        #img = read_Color_Image(img_path)
+
+        #mask = read_Binary_Mask(mask_path)
+        mask = Image.open(mask_path)
+        # convert the PIL Image into a numpy array
+        mask = np.array(mask)
+        numLabels, labelIm,  stats, centroids = cv2.connectedComponentsWithStats(255-mask)
+
+        obj_ids = np.unique(labelIm)
+        #print(obj_ids)
+        #obj_ids = torch.unique(mask)
+        # first id is the background, so remove it
+        obj_ids = obj_ids[1:]
+        num_objs = len(obj_ids)
+
+        # split into a set of masks
+        masks = labelIm == obj_ids[:, None, None]
+
+        num_objs = len(obj_ids)
+        boxes = []
+        for i in range(num_objs):
+            pos = np.nonzero(masks[i])
+            xmin = np.min(pos[1])
+            xmax = np.max(pos[1])
+            ymin = np.min(pos[0])
+            ymax = np.max(pos[0])
+            if xmax-xmin > 1 and ymax-ymin >1:
+                boxes.append([xmin, ymin, xmax, ymax])
+            else:
+                print("weird box "+str([xmin, ymin, xmax, ymax]))
+                raise Exception("dataset.py, wrong mask should have been cleaned up ")
+
+        # only one class
+        labels = torch.ones((num_objs,), dtype=torch.int64)
+        masks = torch.as_tensor(masks, dtype=torch.uint8)
+
+        # Wrap sample and targets into torchvision tv_tensors:
+        img = tv_tensors.Image(img)
+
+        target = {}
+        target["boxes"] = tv_tensors.BoundingBoxes(torch.as_tensor(boxes), format="XYXY", canvas_size=F.get_size(img))
+        target["masks"] = tv_tensors.Mask( masks )
+        target["labels"] = torch.as_tensor(labels)
+
+        if self.transform is not None:
+            img, target = self.transform(img, target)
+
+        #print(target)
+        return img, target
+
+    def __len__(self):
+        return len(self.imageNameList)
+
+
+
 
 
 if __name__ == '__main__':
+    print("This main does nothing at the moment, why are you calling it?")
+    """
     da=CPDataset(sys.argv[1])
 
     tr,vd=da.breakTrainValid(0.4)
@@ -125,7 +257,7 @@ if __name__ == '__main__':
     with open("classDict.txt","w") as f:
         for cod,unicode in vd.classesDict.items():
             f.write(str(unicode)+","+str(cod)+"\n")
-
+    """
 #    for x,y in tr:
         #print(x)
 #        print(y)

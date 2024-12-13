@@ -34,8 +34,8 @@ def boxesFromMask(img, cl = 0, yoloFormat = True):
     out = []
     # Avoid first centroid, unbounded component
     for j in range(1,len(centroids)):
-        if yoloFormat:
-            if stats[j][4] > threshold:
+        if stats[j][4] > threshold:
+            if yoloFormat:
                 h, w = img.shape
                 bw = stats[j][2]
                 bh = stats[j][3]
@@ -43,8 +43,15 @@ def boxesFromMask(img, cl = 0, yoloFormat = True):
                 cy = stats[j][1] + bh/2
                 # normalize and append
                 out.append((cl,cx/w,cy/h,bw/w,bh/h))
-        else:
-            raise Exception("UNSUPORTED BOX FORMAT")
+            else:
+                bw = stats[j][2]
+                bh = stats[j][3]
+                x1 = stats[j][0]
+                y1 = stats[j][1]
+                x2 = stats[j][0] + bw
+                y2 = stats[j][1] + bh
+                # append
+                out.append((cl,x1,y1,x2,y2))
     return out
 
 def sliceAndBox(im,mask,slice):
