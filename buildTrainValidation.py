@@ -91,6 +91,8 @@ def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
     """
         Receives a folder with images
         And another of masks
+        builds a training and a validation set using all the
+        files with masks
         CAREFUL! name correspondences between
         mask and image files
     """

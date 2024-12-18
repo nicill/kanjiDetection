@@ -10,7 +10,15 @@ from sahi.predict import get_prediction,get_sliced_prediction,predict
 import json
 import numpy as np
 import os
+import torch
+from train import collate_fn
+from imageUtils import boxListEvaluation
+
+from torchvision.transforms.functional import to_pil_image
+
 import sys
+import time
+from PIL import Image
 
 os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = pow(2,40).__str__()
 
@@ -25,7 +33,6 @@ def detectBlobsMSER(img, params_dict):
     else:  maxA = 14400
     # use MSER blob detector
     mser = cv2.MSER_create(delta = delt, min_area = minA, max_area = maxA)
-
 
     #detect regions in gray scale image
     regions, _ = mser.detectRegions(img)
@@ -171,3 +178,70 @@ def predict_yolo(conf):
             #with open(predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.json','w+') as resjson:
             #    s = json.dumps(result.to_coco_annotations())
             #    resjson.write(s)
+@torch.no_grad()
+def predict_pytorch(dataset_test, model, device):
+    """
+        Inference for pytorch object detectors
+    """
+    data_loader = torch.utils.data.DataLoader(
+        dataset_test,
+        batch_size=1,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
+    print("Testing Dataset Length "+str(len(dataset_test)))
+
+    # evaluate on the test dataset
+    predConfidence = 0.9
+    n_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    cpu_device = torch.device("cpu")
+    model.eval()
+
+    print("evaluating "+str(len(data_loader)))
+
+    # store all images in disk (debugging purposes)
+    count = 0
+    for images,targets in data_loader:
+        for im in images:
+            to_pil_image(im).save("./debug/testIM"+str(count)+".png")
+            count+=1
+
+    count=0
+    precList = []
+    recList = []
+    for images, targets in data_loader:
+        # store test images to disk
+        images = list(img.to(device) for img in images)
+
+        torch.cuda.synchronize()
+        model_time = time.time()
+        outputs = model(images)
+
+        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+        model_time = time.time() - model_time
+
+        masks = outputs[0]["masks"]
+
+        masks = (masks > predConfidence).squeeze(1).cpu().numpy()  # Threshold and convert to NumPy
+        accumMask = masks[0]*255
+        for i, mask in enumerate(masks):
+            accumMask[mask>0]=255
+
+        outMask = Image.fromarray((255-accumMask).astype("uint8"), mode="L")
+        outMask.save("./debug/TestIM"+str(count)+"mask.png")
+
+        evaluator_time = time.time()
+        prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
+        precList.append(prec)
+        recList.append(rec)
+        evaluator_time = time.time() - evaluator_time
+        print("time "+str(evaluator_time))
+        count+=1
+
+    # accumulate predictions from all images
+    torch.set_num_threads(n_threads)
+    print(precList)
+    print(recList)
+    print("average Precision "+str(sum(precList) / len(precList)))
+    print("average Recall "+str(sum(recList) / len(recList)))

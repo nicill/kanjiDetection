@@ -14,6 +14,7 @@ from torchvision.transforms.v2 import functional as F
 from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask, cleanUpMask
 from buildTrainValidation import boxesFromMask
 from pathlib import Path
+from collections import defaultdict
 
 from PIL import Image
 
@@ -83,7 +84,6 @@ class CPDataset(Dataset):
 
     def numClasses(self):return len(np.unique(list(self.classesDict.keys())))
 
-
     #Create two dataset (training and validation) from an existing one, do a random split
     def breakTrainValid(self,proportion):
         train=CPDataset(None)
@@ -135,6 +135,9 @@ class ODDataset(Dataset):
             with the cut masks and images.
 
             Store all image and mask paths in two list of names
+            store also the relation to the slices to the original images
+            1) what was the original image 2) what coordinate in the original
+            image is the 0,0 in the slice
         """
 
         # Data Structures:
@@ -144,6 +147,7 @@ class ODDataset(Dataset):
 
         imageFolder = os.path.join(dataFolder,"images")
         maskFolder = os.path.join(dataFolder,"masks")
+        slicesToImages = defaultdict(lambda:[])
 
         # create output Folder if it does not exist
         self.outFolder = os.path.join(dataFolder,"forOD")
@@ -166,6 +170,7 @@ class ODDataset(Dataset):
                 for (x, y, window) in sliding_window(im, stepSize = int(slice*0.8), windowSize = wSize ):
                     # get mask window
                     if window.shape == (slice,slice) :
+                        # do we need to fix this?
                         # this should be done better, with padding!, maybe https://docs.opencv.org/3.4/dc/da3/tutorial_copyMakeBorder.html
                         maskW = mask[y:y + wSize[1], x:x + wSize[0]]
                         # discard empty masks
@@ -177,7 +182,10 @@ class ODDataset(Dataset):
                             cv2.imwrite(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"),maskW)
                             self.maskNameList.append(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"))
 
+                            slicesToImages[imageName].append(("Tile"+str(count)+f[2:-6]+".png",x,y))
+
                             count+=1
+        #print(slicesToImages)
 
     def __getitem__(self, idx):
         # load images and masks

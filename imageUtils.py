@@ -235,7 +235,6 @@ def boxListEvaluation(bPred, bGT,th = 50):
             if op>th: return True
         return False
 
-
     def overlappingAreaPercentage(b1, b2):
         """
         Compute the percentage of overlap of rect1 over rect2.
@@ -287,15 +286,6 @@ def boxListEvaluation(bPred, bGT,th = 50):
     precision = num_tp/len(bPred)
 
     return precision,recall
-
-    def outputPytorchOBResultImages(output):
-        """
-            receive an output tensor from a pytorch
-            object detector, ouput images with boxes as squares
-            ouput is a dictionary with "images" and "boxes"
-        """
-        #for im in
-        pass
 
 
 if __name__ == '__main__':
