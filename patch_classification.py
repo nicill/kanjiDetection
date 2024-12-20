@@ -359,7 +359,7 @@ def train_outer(argv):
         weights = models.Swin_B_Weights.DEFAULT
         model_ft = models.swin_b(weights=weights)
         # swim B needs smaller batch size because of memory requirements
-        #bs = 16
+        bs = 32
     elif arch == "vitb16":
         weights = models.ViT_B_16_Weights.DEFAULT
         model_ft = models.vit_b_16(weights=weights)
@@ -384,7 +384,7 @@ def train_outer(argv):
     elif arch == "convnextb":
         weights = models.convnext.ConvNeXt_Base_Weights.DEFAULT
         model_ft = models.convnext_base(weights=weights)
-        #bs = 16
+        bs = 32
     elif arch == "convnextl":
         weights = models.convnext.ConvNeXt_Large_Weights.DEFAULT
         model_ft = models.convnext_large(weights=weights)
@@ -457,4 +457,4 @@ def train_outer(argv):
 if __name__ == '__main__':
     #mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
     #testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
-    main(sys.argv)
+    train_outer(sys.argv)

@@ -219,6 +219,26 @@ def predict_pytorch(dataset_test, model, device):
         outputs = model(images)
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+
+
+        
+        # Move outputs to CPU and filter based on confidence score
+        """
+        filtered_outputs = []
+        for output in outputs:
+        # Filter masks where confidence (score) is > 0.9
+        high_conf_indices = output['scores'] > 0.9
+
+        # Keep only high-confidence masks, boxes, and labels
+        filtered_output = {
+            'boxes': output['boxes'][high_conf_indices].to(cpu_device),
+            'labels': output['labels'][high_conf_indices].to(cpu_device),
+            'scores': output['scores'][high_conf_indices].to(cpu_device),
+            'masks': output['masks'][high_conf_indices].to(cpu_device),
+        }
+        filtered_outputs.append(filtered_output)
+        """
+        
         model_time = time.time() - model_time
 
         masks = outputs[0]["masks"]
