@@ -202,6 +202,10 @@ def get_model_instance_segmentation(num_classes):
         num_classes
     )
 
+    model.roi_heads.score_thresh = 0.5  # Increase to filter out low-confidence boxes (default ~0.05)
+    model.roi_heads.nms_thresh = 0.3   # Reduce to suppress more overlapping boxes (default ~0.5)
+
+
     return model
 
 def get_model_ssd(num_classes):

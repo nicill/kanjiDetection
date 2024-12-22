@@ -179,7 +179,7 @@ def predict_yolo(conf):
             #    s = json.dumps(result.to_coco_annotations())
             #    resjson.write(s)
 @torch.no_grad()
-def predict_pytorch(dataset_test, model, device):
+def predict_pytorch(dataset_test, model, device,predConfidence):
     """
         Inference for pytorch object detectors
     """
@@ -192,7 +192,6 @@ def predict_pytorch(dataset_test, model, device):
     print("Testing Dataset Length "+str(len(dataset_test)))
 
     # evaluate on the test dataset
-    predConfidence = 0.9
     n_threads = torch.get_num_threads()
     torch.set_num_threads(1)
     cpu_device = torch.device("cpu")
@@ -220,44 +219,45 @@ def predict_pytorch(dataset_test, model, device):
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
 
-
-        
         # Move outputs to CPU and filter based on confidence score
-        """
         filtered_outputs = []
         for output in outputs:
-        # Filter masks where confidence (score) is > 0.9
-        high_conf_indices = output['scores'] > 0.9
+            # Filter masks where confidence (score) is > 0.9
+            high_conf_indices = output['scores'] > predConfidence
 
-        # Keep only high-confidence masks, boxes, and labels
-        filtered_output = {
-            'boxes': output['boxes'][high_conf_indices].to(cpu_device),
-            'labels': output['labels'][high_conf_indices].to(cpu_device),
-            'scores': output['scores'][high_conf_indices].to(cpu_device),
-            'masks': output['masks'][high_conf_indices].to(cpu_device),
-        }
-        filtered_outputs.append(filtered_output)
-        """
-        
+            # Keep only high-confidence masks, boxes, and labels
+            filtered_output = {
+                'boxes': output['boxes'][high_conf_indices].to(cpu_device),
+                'labels': output['labels'][high_conf_indices].to(cpu_device),
+                'scores': output['scores'][high_conf_indices].to(cpu_device),
+                'masks': output['masks'][high_conf_indices].to(cpu_device),
+            }
+            filtered_outputs.append(filtered_output)
+
         model_time = time.time() - model_time
 
-        masks = outputs[0]["masks"]
-
-        masks = (masks > predConfidence).squeeze(1).cpu().numpy()  # Threshold and convert to NumPy
-        accumMask = masks[0]*255
-        for i, mask in enumerate(masks):
-            accumMask[mask>0]=255
-
-        outMask = Image.fromarray((255-accumMask).astype("uint8"), mode="L")
-        outMask.save("./debug/TestIM"+str(count)+"mask.png")
-
         evaluator_time = time.time()
-        prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
+        if len(filtered_outputs)>=1 and len(filtered_outputs[0]["masks"])>=1:
+            masks = filtered_outputs[0]["masks"]
+
+            masks = (masks > 0.5).squeeze(1).cpu().numpy()  # Threshold and convert to NumPy
+            accumMask = masks[0]*255
+            for i, mask in enumerate(masks):
+                accumMask[mask>0]=255
+
+            outMask = Image.fromarray((255-accumMask).astype("uint8"), mode="L")
+            outMask.save("./debug/TestIM"+str(count)+"mask.png")
+
+            prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
+        else:
+            prec,rec = 0,0
+
         precList.append(prec)
         recList.append(rec)
         evaluator_time = time.time() - evaluator_time
         print("time "+str(evaluator_time))
         count+=1
+
 
     # accumulate predictions from all images
     torch.set_num_threads(n_threads)

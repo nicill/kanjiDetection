@@ -112,12 +112,14 @@ def main(fName):
             proportion = proportion)
 
     if conf["Test"]:
-        print("train!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print("test!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         if conf["DLN"] == "YOLO":
             predict_yolo(conf)
         elif conf["DLN"] == "FRCNN":
+            # parameter that controls the confidence of the boxes
+            predConf = 0.7
             predict_pytorch(dataset_test = dataset_test, model = pmodel,
-            device = device)
+            device = device, predConfidence = predConf)
 
 if __name__ == "__main__":
 
