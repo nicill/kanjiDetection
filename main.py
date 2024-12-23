@@ -10,9 +10,11 @@ import sys
 import os
 import torch
 
-from buildTrainValidation import buildTrainValid,buildTesting
+
+from buildTrainValidation import buildTrainValid,buildTesting,separateTrainTest
 from train import train_YOLO,makeTrainYAML,get_transform, train_pytorchModel
 from predict import predict_yolo, predict_pytorch
+
 
 from datasets import ODDataset
 
@@ -96,12 +98,18 @@ def main(fName):
             # change so it reads the train dataset from one folder
             # and the test from another
             # use our dataset and defined transformations
+            separateTrainTest(conf["torchData"],os.path.join(conf["torchData"],"separated"),proportion) 
+            dataset = ODDataset(os.path.join(conf["torchData"],"separated","train"),conf["slice"], get_transform())
+            dataset_test = ODDataset(os.path.join(conf["torchData"],"separated","test"),conf["slice"], get_transform())
+
+            """
             dataset = ODDataset(conf["torchData"],conf["slice"], get_transform())
             indices = torch.randperm(len(dataset)).tolist()
             divide = int(len(dataset)*proportion)
             dataset = torch.utils.data.Subset(dataset, indices[:divide])
             dataset_test = ODDataset(conf["torchData"],conf["slice"], get_transform())
             dataset_test = torch.utils.data.Subset(dataset_test, indices[divide:])
+            """
 
     if conf["Train"]:
         print("train!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")

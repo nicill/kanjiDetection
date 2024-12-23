@@ -145,24 +145,21 @@ class ODDataset(Dataset):
         self.maskNameList = []
         self.transform = transform
 
-        imageFolder = os.path.join(dataFolder,"images")
-        maskFolder = os.path.join(dataFolder,"masks")
-        slicesToImages = defaultdict(lambda:[])
+        self.imageFolder = os.path.join(dataFolder,"images")
+        self.maskFolder = os.path.join(dataFolder,"masks")
+        self.slicesToImages = defaultdict(lambda:[])
 
         # create output Folder if it does not exist
         self.outFolder = os.path.join(dataFolder,"forOD")
 
         Path(self.outFolder).mkdir(parents=True, exist_ok=True)
 
-        for dirpath, dnames, fnames in os.walk(maskFolder):
+        for dirpath, dnames, fnames in os.walk(self.maskFolder):
             for f in fnames:
-                #print(os.path.join(maskFolder,f))
                 # read mask and image, everyone is binary
-                mask = read_Binary_Mask(os.path.join(maskFolder,f))
+                mask = read_Binary_Mask(os.path.join(self.maskFolder,f))
                 imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
-                im = read_Binary_Mask(os.path.join(imageFolder,imageName))
-                #print(os.path.join(maskFolder,f))
-                #print(os.path.join(imageFolder,imageName))
+                im = read_Binary_Mask(os.path.join(self.imageFolder,imageName))
 
                 # slice mask and image together, store them in the forOD folder
                 wSize = (slice,slice)
@@ -182,7 +179,7 @@ class ODDataset(Dataset):
                             cv2.imwrite(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"),maskW)
                             self.maskNameList.append(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"))
 
-                            slicesToImages[imageName].append(("Tile"+str(count)+f[2:-6]+".png",x,y))
+                            self.slicesToImages[imageName].append(("Tile"+str(count)+f[2:-6]+".png",x,y))
 
                             count+=1
         #print(slicesToImages)
@@ -249,7 +246,7 @@ class ODDataset(Dataset):
         """
         return the information about how everything was sliced
         """
-        return slicesToImages
+        return self.slicesToImages
 
 
 if __name__ == '__main__':

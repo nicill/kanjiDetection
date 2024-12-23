@@ -6,7 +6,8 @@ from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask
 import os
 import cv2
 import sys
-from random import randint
+from random import randint,uniform
+import shutil
 from pathlib import Path
 
 def boxesFromMask(img, cl = 0, yoloFormat = True):
@@ -152,3 +153,29 @@ def buildTesting(imageFolder, maskFolder, outTest):
                 if not Path(os.path.join(maskFolder,maskName)).is_file():
                     im = cv2.imread(os.path.join(imageFolder,f))
                     cv2.imwrite(os.path.join(outTest,"images",f),im)
+
+
+def separateTrainTest(inFolder, outFolder, proportion = 0.9):
+    """
+    Given a Folder with Wasan images, separate a proportion of them into trainind and testing
+    the folder has two subfolders, images and masks
+    """
+    # create output directories if they do not exist
+    for d in [os.path.join(outFolder),os.path.join(outFolder,"train"), 
+              os.path.join(outFolder,"train","images"),os.path.join(outFolder,"train","masks"),
+              os.path.join(outFolder,"test"), os.path.join(outFolder,"test","images"),os.path.join(outFolder,"test","masks")]:
+        Path(d).mkdir(parents=True, exist_ok=True)
+    print("made "+str([os.path.join(outFolder),os.path.join(outFolder,"train"), os.path.join(outFolder,"train","images"),os.path.join(outFolder,"train","masks"),
+              os.path.join(outFolder,"test"), os.path.join(outFolder,"test","images"),os.path.join(outFolder,"test","masks")]))    
+
+    for dirpath, dnames, fnames in os.walk(os.path.join(inFolder,"masks")):
+        for f in fnames:
+            # f contains the mask name, make the image name
+            imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
+
+            # random draw, test or train
+            saveTo = os.path.join(outFolder,"train") if uniform(0, 1) > proportion else os.path.join(outFolder,"test")
+            shutil.copyfile( os.path.join(inFolder,"masks",f), os.path.join(saveTo,"masks", f ))
+            shutil.copyfile( os.path.join(inFolder,"images",imageName), os.path.join(saveTo,"images", imageName ))
+
+

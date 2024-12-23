@@ -200,11 +200,11 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
     print("evaluating "+str(len(data_loader)))
 
     # store all images in disk (debugging purposes)
-    count = 0
-    for images,targets in data_loader:
-        for im in images:
-            to_pil_image(im).save("./debug/testIM"+str(count)+".png")
-            count+=1
+    #count = 0
+    #for images,targets in data_loader:
+    #    for im in images:
+    #        to_pil_image(im).save("./debug/testIM"+str(count)+".png")
+    #        count+=1
 
     count=0
     precList = []
@@ -246,13 +246,13 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
                 accumMask[mask>0]=255
 
             outMask = Image.fromarray((255-accumMask).astype("uint8"), mode="L")
-            outMask.save("./debug/TestIM"+str(count)+"mask.png")
+            #outMask.save("./debug/TestIM"+str(count)+"mask.png")
 
             prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
 
             # also, write down the boxes in a text file
             sliceInfoDict = dataset_test.getSliceFileInfo()
-            print(sliceInfoDict)
+            #print(sliceInfoDict)
         else:
             prec,rec = 0,0
 
