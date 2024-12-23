@@ -249,6 +249,10 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             outMask.save("./debug/TestIM"+str(count)+"mask.png")
 
             prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
+
+            # also, write down the boxes in a text file
+            sliceInfoDict = dataset_test.getSliceFileInfo()
+            print(sliceInfoDict)
         else:
             prec,rec = 0,0
 

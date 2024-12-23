@@ -245,8 +245,11 @@ class ODDataset(Dataset):
     def __len__(self):
         return len(self.imageNameList)
 
-
-
+    def getSliceFileInfo(self):
+        """
+        return the information about how everything was sliced
+        """
+        return slicesToImages
 
 
 if __name__ == '__main__':

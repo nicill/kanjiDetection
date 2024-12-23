@@ -47,6 +47,9 @@ def read_config(filename):
     res_dict["ep"] = int(conf[section].get('epochs'))
     res_dict["again"] = conf[section].get('trainagain') == "yes"
 
+    res_dict["pScoreTH"] = float(conf[section].get('pScoreTH'))
+    res_dict["pnmsTH"] = float(conf[section].get('pnmsTH'))
+
     section = 'TEST'
     res_dict["Test_dir"] = conf[section].get('testDir')
     res_dict["models"] = conf[section].get('modelist').strip().split(",")
@@ -90,6 +93,8 @@ def main(fName):
             num_classes = 2
             bs = 16 # should probably be a parameter
             proportion = conf["Train_Perc"]/100
+            # change so it reads the train dataset from one folder
+            # and the test from another
             # use our dataset and defined transformations
             dataset = ODDataset(conf["torchData"],conf["slice"], get_transform())
             indices = torch.randperm(len(dataset)).tolist()
@@ -105,11 +110,12 @@ def main(fName):
             makeTrainYAML(conf,yamlTrainFile)
             train_YOLO(conf,yamlTrainFile)
         elif conf["DLN"] == "FRCNN":
+            tParams = {"score":conf["pScoreTH"],"nms":conf["pnmsTH"]}
             # there is a proportion parameter that we may or may not want to touch
             pmodel = train_pytorchModel(dataset = dataset, device = device,
             num_classes = num_classes, file_path = conf["pmodel"],
             num_epochs = conf["ep"], trainAgain=conf["again"],
-            proportion = proportion)
+            proportion = proportion, trainParams = tParams)
 
     if conf["Test"]:
         print("test!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")

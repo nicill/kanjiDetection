@@ -52,7 +52,9 @@ def train_YOLO(conf, datasrc):
     with open(resultstxt,'w+') as res:
         res.write(str(results))
 
-def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10, trainAgain = False, proportion = 0.9):
+def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
+                        trainAgain = False, proportion = 0.9,
+                        trainParams = {"score":0.5,"nms":0.3} ):
     ssd = False
 
     # split the dataset in train and test set
@@ -72,6 +74,8 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
             model = get_model_ssd(num_classes)
         else:
             model = get_model_instance_segmentation(num_classes)
+            model.roi_heads.score_thresh = trainParams["score"]  # Increase to filter out low-confidence boxes (default ~0.05)
+            model.roi_heads.nms_thresh = trainParams["nms"]   # Reduce to suppress more overlapping boxes (default ~0.5)
 
         # move model to the right device
         model.to(device)
@@ -201,10 +205,6 @@ def get_model_instance_segmentation(num_classes):
         hidden_layer,
         num_classes
     )
-
-    model.roi_heads.score_thresh = 0.5  # Increase to filter out low-confidence boxes (default ~0.05)
-    model.roi_heads.nms_thresh = 0.3   # Reduce to suppress more overlapping boxes (default ~0.5)
-
 
     return model
 
