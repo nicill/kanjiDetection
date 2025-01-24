@@ -22,7 +22,7 @@ class CPDataset(Dataset):
     # Load all image files from the folder, put them into a list
     # At the same time, load all the labels from the folder names, put them into a list too!
 
-    def __init__(self,dataFolder=None,transForm=None,listOfClasses=None,verbose = True):
+    def __init__(self,dataFolder=None,transForm=None,listOfClasses=None,verbose = False):
 
         # Data Structures:
         self.classesDict = {} #a dictionary to store class codes

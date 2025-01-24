@@ -72,6 +72,9 @@ def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
     dummyDS = tDataset(ims,weights.transforms())
     dummyDL = torch.utils.data.DataLoader(dummyDS, batch_size=bs, shuffle=False)
 
+    print(device)
+    print(imNames)
+
     totalPreds = []
     with torch.no_grad():
         for inputs,targets in dummyDL:

@@ -98,9 +98,9 @@ def predictAllFolders(dataFolder, model,weights, classDict ):
     for dirpath, dnames, fnames in os.walk(dataFolder):
         for d in dnames:
             print("Going to predict "+str(d))
-            outFileName = d+".txt"
+            outFileName = os.path.join(dataFolder,d+".txt")
 
-            testAndOutputForAnnotations(d,outFileName,model,weights, classDict)
+            testAndOutputForAnnotations(os.path.join(dataFolder,d),outFileName,model,weights, classDict)
 
  
 def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
