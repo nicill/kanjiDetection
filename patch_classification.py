@@ -455,6 +455,4 @@ def train_outer(argv):
     plot_loss_acc(history, model_ft, epo)
 
 if __name__ == '__main__':
-    #mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
-    #testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
     train_outer(sys.argv)

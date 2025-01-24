@@ -11,10 +11,9 @@ import os
 import torch
 
 
-from buildTrainValidation import buildTrainValid,buildTesting,separateTrainTest
+from dataHandlding import buildTrainValid,buildTesting,separateTrainTest
 from train import train_YOLO,makeTrainYAML,get_transform, train_pytorchModel
 from predict import predict_yolo, predict_pytorch
-
 
 from datasets import ODDataset
 
