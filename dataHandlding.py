@@ -95,12 +95,12 @@ def predictAllFolders(dataFolder, model,weights, classDict ):
         precit them and put the results in a text file
     """  
 
-    for dirpath, dnames, fnames in os.walk(maskFolder):
+    for dirpath, dnames, fnames in os.walk(dataFolder):
         for d in dnames:
-
+            print("Going to predict "+str(d))
             outFileName = d+".txt"
 
-            testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict)
+            testAndOutputForAnnotations(d,outFileName,model,weights, classDict)
 
  
 def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
