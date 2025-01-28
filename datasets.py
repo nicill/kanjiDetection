@@ -182,7 +182,7 @@ class ODDataset(Dataset):
                             self.slicesToImages[imageName].append(("Tile"+str(count)+f[2:-6]+".png",x,y))
 
                             count+=1
-        #print(slicesToImages)
+        print(self.slicesToImages)
 
     def __getitem__(self, idx):
         # load images and masks
