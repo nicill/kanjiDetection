@@ -41,50 +41,6 @@ def distPoints(p,q):
     """
     return sqrt( (p[0]-q[0])*(p[0]-q[0])+(p[1]-q[1])*(p[1]-q[1]))
 
-def predictionsToKanjiImages(im,mask,path,imCode,storeContext=False):
-    """
-    Function that receives a prediction
-    Binary mask and an image and stores the
-    resulting Kanji images in the hard drive
-    Adds a boolean flag to also store context images
-    """
-    def processComponent(l):
-        """
-        Inner function to store
-        the part marked by the label
-        image to disk
-        """
-        #nonlocal im
-        x = stats[l][0]
-        y = stats[l][1]
-        w = stats[l][2]
-        h = stats[l][3]
-        subIm = im[y:y+h,x:x+w]
-        cv2.imwrite(os.path.join(path,
-                    imCode+"kanjiX"+str(x)+"Y"+str(y)+"H"+str(h)+"W"+str(w)+".jpg")
-                    ,subIm)
-        if storeContext:
-
-            newIm = cv2.cvtColor(im,cv2.COLOR_GRAY2RGB)
-            newSubIm = newIm[y:y+h,x:x+w]
-            newSubIm[subIm==0] = (0,0,255)
-
-            subImC = newIm[max(0,int(y-contextSize/2)):y+h+contextSize,max(0,int(x-contextSize)):x+w+contextSize]
-            cv2.imwrite(os.path.join(path,
-                        "CONTEXT"+imCode+"kanjiX"+str(x)+"Y"+str(y)+"H"+str(h)+"W"+str(w)+".jpg")
-                        ,subImC)
-
-    # create output folder if necessary
-    Path(path).mkdir(parents=True, exist_ok=True)
-
-    # Threshold  the image to make sure it is binary
-    contextSize = 500
-    strictBinarization(mask)
-    #compute connected components
-    numLabels, labelImage,stats, centroids = cv2.connectedComponentsWithStats(255-mask)
-    #traverse all labels but ignore label 0 as it contains the background
-    list(map(processComponent,range(1,numLabels)))
-
 def cleanUpMask(mask, areaTH = 100, thicknessTH = 20):
     """
     Receive a Mask with the position of kanji
@@ -288,8 +244,80 @@ def boxListEvaluation(bPred, bGT,th = 50):
     return precision,recall
 
 
-if __name__ == '__main__':
-    im = read_Binary_Mask(sys.argv[1])
-    mask = read_Binary_Mask(sys.argv[2])
-    folder = sys.argv[3]
-    predictionsToKanjiImages(im, mask,folder,os.path.basename(sys.argv[1])[:-4],True)
+def boxesFromMask(img, cl = 0, yoloFormat = True):
+    """
+    Return a list of box coordinates
+    From a binary image
+
+    Parameters
+    ----------
+    im : ndarray
+        taget image
+
+    Returns
+    -------
+    list: list of box coordinater
+    """
+    # void small regions
+    threshold = 500
+
+    # Binarize, just in case
+    img[img<=10] = 0
+    img[img>10] = 255
+    _, _, stats, centroids = cv2.connectedComponentsWithStats(255-img)
+
+    out = []
+    # Avoid first centroid, unbounded component
+    for j in range(1,len(centroids)):
+        if stats[j][4] > threshold:
+            if yoloFormat:
+                h, w = img.shape
+                bw = stats[j][2]
+                bh = stats[j][3]
+                cx = stats[j][0] + bw/2
+                cy = stats[j][1] + bh/2
+                # normalize and append
+                out.append((cl,cx/w,cy/h,bw/w,bh/h))
+            else:
+                bw = stats[j][2]
+                bh = stats[j][3]
+                x1 = stats[j][0]
+                y1 = stats[j][1]
+                x2 = stats[j][0] + bw
+                y2 = stats[j][1] + bh
+                # append
+                out.append((cl,x1,y1,x2,y2))
+    return out
+
+def sliceAndBox(im,mask,slice):
+    """
+    Given image and mask, slice them
+    output image slices and mask slice
+    and text files
+    """
+    out = []
+    wSize = (slice,slice)
+    for (x, y, window) in sliding_window(im, stepSize = slice, windowSize = wSize ):
+        boxList = []
+        # get mask window
+        maskW = mask[y:y + wSize[1], x:x + wSize[0]]
+        # The mask was already binarized
+        # compute box coords
+        coords = boxesFromMask(maskW)
+        # add window, mask window and boxlist
+        out.append(("x"+str(x)+"y"+str(y),window,maskW,coords))
+    return out
+
+def boxCoordsToFile(file,boxC):
+    """
+        Receive a list of tuples
+        with bounding boxes
+        and write it to file
+
+    """
+    def writeTuple(tup):
+        c,px,py,w,h = tup
+        f.write(str(c)+" "+str(px)+" "+str(py)+" "+str(w)+" "+str(h)+"\n")
+
+    with open(file, 'a') as f:
+        list(map( writeTuple, boxC))

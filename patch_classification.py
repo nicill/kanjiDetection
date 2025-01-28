@@ -72,6 +72,9 @@ def testAndOutputForAnnotations(inFolder,outFileName,model,weights, classDict):
     dummyDS = tDataset(ims,weights.transforms())
     dummyDL = torch.utils.data.DataLoader(dummyDS, batch_size=bs, shuffle=False)
 
+    print(device)
+    print(imNames)
+
     totalPreds = []
     with torch.no_grad():
         for inputs,targets in dummyDL:
@@ -455,6 +458,4 @@ def train_outer(argv):
     plot_loss_acc(history, model_ft, epo)
 
 if __name__ == '__main__':
-    #mod,w,cD = loadModelReadClassDict(sys.argv[1], sys.argv[2], sys.argv[3])
-    #testAndOutputForAnnotations(sys.argv[4],sys.argv[5],mod,w,cD)
     train_outer(sys.argv)

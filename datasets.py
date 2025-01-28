@@ -11,8 +11,7 @@ from torch.utils.data.dataset import Dataset
 from torchvision import tv_tensors
 from torchvision.transforms.v2 import functional as F
 
-from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask, cleanUpMask
-from buildTrainValidation import boxesFromMask
+from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask, cleanUpMask,boxesFromMask
 from pathlib import Path
 from collections import defaultdict
 
@@ -23,7 +22,7 @@ class CPDataset(Dataset):
     # Load all image files from the folder, put them into a list
     # At the same time, load all the labels from the folder names, put them into a list too!
 
-    def __init__(self,dataFolder=None,transForm=None,listOfClasses=None):
+    def __init__(self,dataFolder=None,transForm=None,listOfClasses=None,verbose = False):
 
         # Data Structures:
         self.classesDict = {} #a dictionary to store class codes
@@ -58,6 +57,8 @@ class CPDataset(Dataset):
                     # also, store the label in the label list
                     if currentClass not in self.classesDict: self.classesDict[currentClass] = len(self.classesDict)
                     self.labelList.append(self.classesDict[currentClass])
+        if verbose: 
+            self.classDictToFile("classDict.txt")
 
     def __getitem__(self, index):
 
@@ -106,6 +107,17 @@ class CPDataset(Dataset):
             train.labelList.append(toDivide[i][1])
 
         return train,valid
+    
+    def classDictToFile(self,outFile):
+        """
+        write the classDictionary to file
+        
+        """
+        if (len(self.classesDict.items())>0):
+            with open(outFile,"w") as f:
+                for cod,unicode in self.classesDict.items():
+                    f.write(str(unicode)+","+str(cod)+"\n")
+
 
 class tDataset(CPDataset):
     # Given a list of images, create a simple dataset with empty labels

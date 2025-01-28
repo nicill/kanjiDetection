@@ -1,3 +1,5 @@
+# File added when creating pytorch object detectors, may need cleaning up
+
 from collections import defaultdict, deque
 import datetime
 import pickle
