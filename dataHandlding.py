@@ -103,21 +103,25 @@ def predictAllFolders(dataFolder, model,weights, classDict ):
             testAndOutputForAnnotations(os.path.join(dataFolder,d),outFileName,model,weights, classDict)
 
 
-def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
+def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
     """
         Receives a folder with images
         And another of masks
-        builds a training and a validation set using all the
+        builds training, validation and test set using all the
         files with masks
         CAREFUL! name correspondences between
         mask and image files
     """
     # create output directories if they do not exist
-    for d in [os.path.join(outTrain,"images"),os.path.join(outTrain,"masks"),
-    os.path.join(outTrain,"labels"),os.path.join(outVal,"images"),
-    os.path.join(outVal,"masks"),os.path.join(outVal,"labels")]:
+    dirList = [os.path.join(outTrain,"images"),os.path.join(outTrain,"masks"),
+    os.path.join(outTrain,"labels"), os.path.join(outVal,"images"),
+    os.path.join(outVal,"masks"), os.path.join(outVal,"labels"),
+    os.path.join(outTest,"images"), os.path.join(outTest,"masks"),
+    os.path.join(outTest,"labels")]
+    print(dirList)
+    for d in dirList:
         Path(d).mkdir(parents=True, exist_ok=True)
-    print("made paths "+str(os.path.join(outVal,"images") ))
+        print("making "+str(d))
 
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:
@@ -140,11 +144,11 @@ def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
             for suffix,i,m,l in sIML:
                 newFileName = f[2:-6]+suffix
 
-                # randomDraw train/val
-                outDir = outTrain if randint(1,100) < perc else outVal
+                # randomDraw train/val/testIM
+                outDir = outTrain if randint(1,100) < perc else ( outVal if randint(1,100) < 50 else outTest  )
                 # store files including text file
                 cv2.imwrite(os.path.join(outDir,"images",newFileName+".png"),i)
-                #cv2.imwrite(os.path.join(outDir,"masks",newFileName+"MASK.png"),m)
+                cv2.imwrite(os.path.join(outDir,"masks",newFileName+"MASK.png"),m)
                 boxCoordsToFile(os.path.join(outDir,"labels",newFileName+".txt"),l)
 
 def buildNewDataTesting(imageFolder, maskFolder, outTest):

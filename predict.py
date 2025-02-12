@@ -12,7 +12,7 @@ import numpy as np
 import os
 import torch
 from train import collate_fn
-from imageUtils import boxListEvaluation
+from imageUtils import boxListEvaluation, boxesFound
 
 from torchvision.transforms.functional import to_pil_image
 
@@ -111,6 +111,7 @@ def boxesToMaskFile(result,file,shape):
     with open(file,'w+') as f:
         list(map(paintBox,result.object_prediction_list))
         cv2.imwrite(file,im)
+    return im
 
 def boxesToPointsFile(result,file,shape):
     """
@@ -139,7 +140,10 @@ def testFileList(folder):
 
 def predict_yolo(conf):
 
-    testPath = conf["Test_dir"]+"images"
+    testPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"images")
+    maskPath =os.path.join(conf["TV_dir"],conf["Test_dir"],"masks")
+    print("jljklj" )
+    print(maskPath)
     testImageList = testFileList(testPath)
     modellist = conf["models"]
     predict_dir = conf["Pred_dir"]
@@ -153,15 +157,28 @@ def predict_yolo(conf):
         for currentmodel in modellist: #not doing anything at the moment
             modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
 
-            detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',model_path=modelpath,device=0)
+            detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',
+                                                        model_path=modelpath,device=0)
             image = cv2.imread(imPath)
+            maskName = str(imPath)[:-4]+"MASK.png"
 
             result = get_sliced_prediction(image,detectionModel,slice_height=512
             ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
             verbose = False )
 
             boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
-            boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
+            outMask = boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
+
+            # evaluate
+            print(maskPath)
+            print(maskName)
+
+            gtMaskPath = os.path.join(maskPath,maskName)
+            print("POOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+            print(gtMaskPath)
+            gtMask = cv2.imread(gtMaskPath)
+            print(float(boxesFound(gtMask,outMask)))
+            sys.exit()
 
             visualize_object_predictions(
                 image=np.ascontiguousarray(result.image),

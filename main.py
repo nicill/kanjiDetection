@@ -11,7 +11,7 @@ import os
 import torch
 
 
-from dataHandlding import buildTrainValid,buildNewDataTesting,separateTrainTest
+from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest
 from train import train_YOLO,makeTrainYAML,get_transform, train_pytorchModel
 from predict import predict_yolo, predict_pytorch
 
@@ -20,6 +20,8 @@ from datasets import ODDataset
 def read_config(filename):
     conf = configparser.ConfigParser()
     conf.read(filename)
+    # print config parser
+    #print({section: dict(conf[section]) for section in conf.sections()})
     res_dict = {}
 
     section = 'TODO'
@@ -41,6 +43,7 @@ def read_config(filename):
     res_dict["TV_dir"] = conf[section].get('tVDir')
     res_dict["Train_dir"] = conf[section].get('trainDir')
     res_dict["Valid_dir"] = conf[section].get('validDir')
+    res_dict["Test_dir"] = conf[section].get('testDir')
     res_dict["Train_Perc"] = int(conf[section].get('trainPercentage'))
 
     res_dict["Train_res"] = conf[section].get('trainResFolder')
@@ -52,7 +55,7 @@ def read_config(filename):
     res_dict["pnmsTH"] = float(conf[section].get('pnmsTH'))
 
     section = 'TEST'
-    res_dict["Test_dir"] = conf[section].get('testDir')
+    res_dict["Test_ND_dir"] = conf[section].get('testNewDataDir')
     res_dict["models"] = conf[section].get('modelist').strip().split(",")
     res_dict["pmodel"] = conf[section].get('pmodel')
 
@@ -73,10 +76,13 @@ def main(fName):
     # Do whatever needs to be done
     if conf["Prep"]:
         if conf["DLN"] == "YOLO":
-            print("calling btv")
-            buildTrainValid(conf["Train_input_dir_images"],
-            conf["Train_input_dir_masks"],conf["slice"],os.path.join(conf["TV_dir"],conf["Train_dir"]),
-            os.path.join(conf["TV_dir"],conf["Valid_dir"]),conf["Train_Perc"])
+            print("calling btrvt")
+            buildTRVT(conf["Train_input_dir_images"],
+            conf["Train_input_dir_masks"],conf["slice"],
+            os.path.join(conf["TV_dir"],conf["Train_dir"]),
+            os.path.join(conf["TV_dir"],conf["Valid_dir"]),
+            os.path.join(conf["TV_dir"],conf["Test_dir"]),
+            conf["Train_Perc"])
 
             if ["createTest"]:
                 print("create test")
