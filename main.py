@@ -11,7 +11,7 @@ import os
 import torch
 
 
-from dataHandlding import buildTrainValid,buildTesting,separateTrainTest
+from dataHandlding import buildTrainValid,buildNewDataTesting,separateTrainTest
 from train import train_YOLO,makeTrainYAML,get_transform, train_pytorchModel
 from predict import predict_yolo, predict_pytorch
 
@@ -80,7 +80,7 @@ def main(fName):
 
             if ["createTest"]:
                 print("create test")
-                buildTesting(conf["Train_input_dir_images"],
+                buildNewDataTesting(conf["Train_input_dir_images"],
                 conf["Train_input_dir_masks"], conf["Test_dir"])
         elif conf["DLN"] == "FRCNN":
             # use the GPU or the CPU, if a GPU is not available
@@ -97,7 +97,7 @@ def main(fName):
             # change so it reads the train dataset from one folder
             # and the test from another
             # use our dataset and defined transformations
-            separateTrainTest(conf["torchData"],os.path.join(conf["torchData"],"separated"),proportion) 
+            separateTrainTest(conf["torchData"],os.path.join(conf["torchData"],"separated"),proportion)
             dataset = ODDataset(os.path.join(conf["torchData"],"separated","train"),conf["slice"], get_transform())
             dataset_test = ODDataset(os.path.join(conf["torchData"],"separated","test"),conf["slice"], get_transform())
 

@@ -60,11 +60,11 @@ def foldersToAnnotationDB(maskFolder, imageFolder, outFolder, storeContext=False
     """
         Traverse the annotation masks in maskFolder
         find the images with corresponding names in imageFolder
-        for each image with mask, make a new folder with images 
+        for each image with mask, make a new folder with images
         for every Kanji and context images if necessary
-    """  
+    """
     # create output directory if it does not exist
-    Path(outFolder).mkdir(parents=True, exist_ok=True)  
+    Path(outFolder).mkdir(parents=True, exist_ok=True)
 
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:
@@ -90,10 +90,10 @@ def foldersToAnnotationDB(maskFolder, imageFolder, outFolder, storeContext=False
 
 def predictAllFolders(dataFolder, model,weights, classDict ):
     """
-        Traverse a data folder containing 
+        Traverse a data folder containing
         folders with all the separated Kanji for one image
         precit them and put the results in a text file
-    """  
+    """
 
     for dirpath, dnames, fnames in os.walk(dataFolder):
         for d in dnames:
@@ -102,7 +102,7 @@ def predictAllFolders(dataFolder, model,weights, classDict ):
 
             testAndOutputForAnnotations(os.path.join(dataFolder,d),outFileName,model,weights, classDict)
 
- 
+
 def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
     """
         Receives a folder with images
@@ -117,9 +117,6 @@ def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
     os.path.join(outTrain,"labels"),os.path.join(outVal,"images"),
     os.path.join(outVal,"masks"),os.path.join(outVal,"labels")]:
         Path(d).mkdir(parents=True, exist_ok=True)
-    #for d in [os.path.join(outTrain,"images"),os.path.join(outTrain,"labels"),
-    #os.path.join(outVal,"images"),os.path.join(outVal,"labels")]:
-    #    Path(d).mkdir(parents=True, exist_ok=True)
     print("made paths "+str(os.path.join(outVal,"images") ))
 
     for dirpath, dnames, fnames in os.walk(maskFolder):
@@ -150,7 +147,7 @@ def buildTrainValid(imageFolder, maskFolder, slice, outTrain, outVal, perc):
                 #cv2.imwrite(os.path.join(outDir,"masks",newFileName+"MASK.png"),m)
                 boxCoordsToFile(os.path.join(outDir,"labels",newFileName+".txt"),l)
 
-def buildTesting(imageFolder, maskFolder, outTest):
+def buildNewDataTesting(imageFolder, maskFolder, outTest):
     """
         Receives a folder with images and another with masks
         and copies to a "testing" file, those with no mask
@@ -176,12 +173,12 @@ def separateTrainTest(inFolder, outFolder, proportion = 0.9):
     the folder has two subfolders, images and masks
     """
     # create output directories if they do not exist
-    for d in [os.path.join(outFolder),os.path.join(outFolder,"train"), 
+    for d in [os.path.join(outFolder),os.path.join(outFolder,"train"),
               os.path.join(outFolder,"train","images"),os.path.join(outFolder,"train","masks"),
               os.path.join(outFolder,"test"), os.path.join(outFolder,"test","images"),os.path.join(outFolder,"test","masks")]:
         Path(d).mkdir(parents=True, exist_ok=True)
     print("made "+str([os.path.join(outFolder),os.path.join(outFolder,"train"), os.path.join(outFolder,"train","images"),os.path.join(outFolder,"train","masks"),
-              os.path.join(outFolder,"test"), os.path.join(outFolder,"test","images"),os.path.join(outFolder,"test","masks")]))    
+              os.path.join(outFolder,"test"), os.path.join(outFolder,"test","images"),os.path.join(outFolder,"test","masks")]))
 
     for dirpath, dnames, fnames in os.walk(os.path.join(inFolder,"masks")):
         for f in fnames:
@@ -201,7 +198,7 @@ if __name__ == '__main__':
     #mask = read_Binary_Mask(sys.argv[2])
     #folder = sys.argv[3]
     #predictionsToKanjiImages(im, mask,folder,os.path.basename(sys.argv[1])[:-4],True)
-    
+
     # to create the Kanji folder of the whole database
     maskFolder = sys.argv[1]
     imageFolder = sys.argv[2]
@@ -211,6 +208,6 @@ if __name__ == '__main__':
     if buildDB:
         foldersToAnnotationDB(maskFolder, imageFolder, outFolder, storeContext=True)
 
-    # loadmodelReadClassDict params: arch,modelFile,cDFile 
+    # loadmodelReadClassDict params: arch,modelFile,cDFile
     mod,w,cD = loadModelReadClassDict(sys.argv[4], sys.argv[5], sys.argv[6])
     predictAllFolders(outFolder,mod,w,cD)
