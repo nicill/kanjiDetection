@@ -142,8 +142,6 @@ def predict_yolo(conf):
 
     testPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"images")
     maskPath =os.path.join(conf["TV_dir"],conf["Test_dir"],"masks")
-    print("jljklj" )
-    print(maskPath)
     testImageList = testFileList(testPath)
     modellist = conf["models"]
     predict_dir = conf["Pred_dir"]
@@ -151,7 +149,8 @@ def predict_yolo(conf):
     #print(testPath)
     #create predictions dir if it does not exist
     Path(predict_dir).mkdir(parents=True, exist_ok=True)
-
+    dScore = []
+    invScore = []
     for imPath in testImageList:
         print("predicting "+imPath)
         for currentmodel in modellist: #not doing anything at the moment
@@ -160,7 +159,7 @@ def predict_yolo(conf):
             detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',
                                                         model_path=modelpath,device=0)
             image = cv2.imread(imPath)
-            maskName = str(imPath)[:-4]+"MASK.png"
+            maskName = os.path.basename(imPath)[:-4]+"MASK.png"
 
             result = get_sliced_prediction(image,detectionModel,slice_height=512
             ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
@@ -170,15 +169,10 @@ def predict_yolo(conf):
             outMask = boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
 
             # evaluate
-            print(maskPath)
-            print(maskName)
-
             gtMaskPath = os.path.join(maskPath,maskName)
-            print("POOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
-            print(gtMaskPath)
-            gtMask = cv2.imread(gtMaskPath)
-            print(float(boxesFound(gtMask,outMask)))
-            sys.exit()
+            gtMask = cv2.imread(gtMaskPath,0)
+            dScore.append(float(boxesFound(gtMask,outMask)))
+            invScore.append(float(boxesFound(outMask,gtMask)))
 
             visualize_object_predictions(
                 image=np.ascontiguousarray(result.image),
@@ -192,6 +186,8 @@ def predict_yolo(conf):
                 export_format='png'
             )
 
+    print(invScore)
+    print(dScore)
             #with open(predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.json','w+') as resjson:
             #    s = json.dumps(result.to_coco_annotations())
             #    resjson.write(s)

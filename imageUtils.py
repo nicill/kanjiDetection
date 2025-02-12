@@ -155,8 +155,8 @@ def boxesFound(im1, im2, verbose = False):
         # Not sure why the cast to int is needed (but it is)
         return (int)(im2[int(y), int(x)]) == 0
     # Threshold  the image to make sure it is binary
-    strictBinarization(im1)
     strictBinarization(im2)
+    strictBinarization(im1)
 
     numLabels, labelImage, stats, centroids = cv2.connectedComponentsWithStats(255-im1)
     totalBoxes = len(centroids)-1
