@@ -151,6 +151,7 @@ def predict_yolo(conf):
     Path(predict_dir).mkdir(parents=True, exist_ok=True)
     dScore = []
     invScore = []
+    ignoreCount = 0
     for imPath in testImageList:
         print("predicting "+imPath)
         for currentmodel in modellist: #not doing anything at the moment
@@ -171,8 +172,12 @@ def predict_yolo(conf):
             # evaluate
             gtMaskPath = os.path.join(maskPath,maskName)
             gtMask = cv2.imread(gtMaskPath,0)
-            dScore.append(float(boxesFound(gtMask,outMask)))
-            invScore.append(float(boxesFound(outMask,gtMask)))
+            try:
+                dScore.append(float(boxesFound(gtMask,outMask)))
+                invScore.append(float(boxesFound(outMask,gtMask)))
+            except:
+                print("image with no boxes, ignoring "+str(ignoreCount))
+                ignoreCount+=1
 
             visualize_object_predictions(
                 image=np.ascontiguousarray(result.image),
@@ -187,7 +192,10 @@ def predict_yolo(conf):
             )
 
     print(invScore)
+    print(np.average(invScore))
     print(dScore)
+    print(np.average(dScore))
+
             #with open(predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.json','w+') as resjson:
             #    s = json.dumps(result.to_coco_annotations())
             #    resjson.write(s)

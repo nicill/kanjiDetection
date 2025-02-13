@@ -118,10 +118,10 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
     os.path.join(outVal,"masks"), os.path.join(outVal,"labels"),
     os.path.join(outTest,"images"), os.path.join(outTest,"masks"),
     os.path.join(outTest,"labels")]
-    print(dirList)
     for d in dirList:
         Path(d).mkdir(parents=True, exist_ok=True)
         print("making "+str(d))
+
 
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:

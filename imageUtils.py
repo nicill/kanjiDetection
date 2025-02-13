@@ -168,7 +168,7 @@ def boxesFound(im1, im2, verbose = False):
     if totalBoxes != 0:
         return 100 * count/totalBoxes
     else:
-        return 0
+        raise Exception("Image with no boxes")
 
 def boxListEvaluation(bPred, bGT,th = 50):
     """
