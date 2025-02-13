@@ -138,7 +138,21 @@ def eraseNonFatRegions(im,fatness):
     numLabels, labelImage,stats, centroids = cv2.connectedComponentsWithStats(255-im)
     list(map(processComponent,range(1,numLabels)))
 
-def boxesFound(im1, im2, verbose = False):
+def precRecall(dScore, invScore):
+    """
+        Receive two list, the first with tuples of boxes found and total boxes 
+        (in the GT found in the prediction, dScore and viceversa, invScore in that order)
+    """
+    gtBoxes = sum([ x[1] for x in dScore ])
+    foundGTBoxes = sum([ x[0] for x in dScore ])
+
+    predBoxes = sum([ x[1] for x in invScore ])
+    TPBoxes = sum([ x[0] for x in invScore ])
+
+    #return precision and recall
+    return 100*TPBoxes/predBoxes,100*foundGTBoxes/gtBoxes
+
+def boxesFound(im1, im2, percentage = True, verbose = False):
     """
     Function that receives two bounding box
     images and counts how many of the boxes
@@ -152,8 +166,8 @@ def boxesFound(im1, im2, verbose = False):
         """
         nonlocal im2
         x,y = centroid
-        # Not sure why the cast to int is needed (but it is)
         return (int)(im2[int(y), int(x)]) == 0
+
     # Threshold  the image to make sure it is binary
     strictBinarization(im2)
     strictBinarization(im1)
@@ -165,10 +179,13 @@ def boxesFound(im1, im2, verbose = False):
     #print(totalBoxes)
     if verbose: print("Result:"+str(100 * count/totalBoxes)+"%\n")
 
-    if totalBoxes != 0:
-        return 100 * count/totalBoxes
+    if percentage:
+        if totalBoxes != 0:
+            return 100 * count/totalBoxes
+        else:
+            raise Exception("Image with no boxes")
     else:
-        raise Exception("Image with no boxes")
+        return (count,totalBoxes)
 
 def boxListEvaluation(bPred, bGT,th = 50):
     """

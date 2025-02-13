@@ -12,7 +12,7 @@ import numpy as np
 import os
 import torch
 from train import collate_fn
-from imageUtils import boxListEvaluation, boxesFound
+from imageUtils import boxListEvaluation, boxesFound, precRecall
 
 from torchvision.transforms.functional import to_pil_image
 
@@ -173,8 +173,8 @@ def predict_yolo(conf):
             gtMaskPath = os.path.join(maskPath,maskName)
             gtMask = cv2.imread(gtMaskPath,0)
             try:
-                dScore.append(float(boxesFound(gtMask,outMask)))
-                invScore.append(float(boxesFound(outMask,gtMask)))
+                dScore.append(boxesFound(gtMask,outMask, percentage = False))
+                invScore.append(boxesFound(outMask,gtMask, percentage = False))
             except:
                 print("image with no boxes, ignoring "+str(ignoreCount))
                 ignoreCount+=1
@@ -191,14 +191,12 @@ def predict_yolo(conf):
                 export_format='png'
             )
 
+    # computations
     print(invScore)
-    print(np.average(invScore))
     print(dScore)
-    print(np.average(dScore))
+    prec, rec = precRecall(dScore, invScore)
+    print("At the end of the test precision and recall values where "+str(prec)+" and "+str(rec))
 
-            #with open(predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.json','w+') as resjson:
-            #    s = json.dumps(result.to_coco_annotations())
-            #    resjson.write(s)
 @torch.no_grad()
 def predict_pytorch(dataset_test, model, device,predConfidence):
     """
