@@ -228,6 +228,9 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
     count=0
     precList = []
     recList = []
+    dScore = []
+    invScore = []
+
     for images, targets in data_loader:
         # store test images to disk
         images = list(img.to(device) for img in images)
@@ -259,7 +262,8 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
         if len(filtered_outputs)>=1 and len(filtered_outputs[0]["masks"])>=1:
             masks = filtered_outputs[0]["masks"]
 
-            masks = (masks > 0.5).squeeze(1).cpu().numpy()  # Threshold and convert to NumPy
+            # Threshold and convert to NumPy
+            masks = (masks > 0.5).squeeze(1).cpu().numpy()
             accumMask = masks[0]*255
             for i, mask in enumerate(masks):
                 accumMask[mask>0]=255
@@ -268,6 +272,21 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             #outMask.save("./debug/TestIM"+str(count)+"mask.png")
 
             prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
+            # maybe create an output mask here and evaluate with boxesFound like for Pytorch
+            masksT = targets[0]["masks"]
+            masksT = (masksT > 0.5).squeeze(1).cpu().numpy()
+            accumMask = masksT[0]*255
+            for i, maskT in enumerate(masksT):
+                accumMaskT[maskT>0]=255
+            gtMask = Image.fromarray((255-accumMask).astype("uint8"), mode="L")
+
+            try:
+                dScore.append(boxesFound(gtMask,outMask, percentage = False))
+                invScore.append(boxesFound(outMask,gtMask, percentage = False))
+            except:
+                print("image with no boxes, ignoring "+str(ignoreCount))
+                ignoreCount+=1
+
 
             # also, write down the boxes in a text file
             sliceInfoDict = dataset_test.getSliceFileInfo()
@@ -284,6 +303,13 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
 
     # accumulate predictions from all images
     torch.set_num_threads(n_threads)
+
+    # computations
+    print(invScore)
+    print(dScore)
+    prec, rec = precRecall(dScore, invScore)
+    print("At the end of the test precision and recall values (boxes found) where "+str(prec)+" and "+str(rec))
+
     print(precList)
     print(recList)
     print("average Precision "+str(sum(precList) / len(precList)))
