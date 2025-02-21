@@ -6,6 +6,42 @@ import sys, pymupdf
 import fitz
 import numpy as np
 
+def deNoiseSubFolders(folder, sTh = 0.85, ws = 271):
+    """
+        Receive a folder with
+        sakuma books one in each
+        subfolder, denoise
+        every subfolder in turn
+    """
+    for dirpath, dnames, fnames in os.walk(folder):
+        for dirN in dnames:
+            print("processing "+str(dirN))
+            if "sakuma" in dirN:
+                deNoiseFolder(os.path.join(folder, dirN), sTh , ws )
+
+def deNoiseFolder(folder, sTh = 0.85, ws = 271):
+    """
+        Receive a folder corresponding
+        to a scanned book
+        Get all its image files
+        Denoise them
+    """
+    for dirpath, dnames, fnames in os.walk(folder):
+        for f in fnames:
+            if "denoised" not in str(f):
+                # read the image as a color image
+                print("      ***** processing "+str(f))
+                im = cv2.imread(os.path.join(folder,f))
+                # Transform to grayscale
+                img_gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+                g2 = img_gray.copy()
+                newName = f[:-4]+"denoised"+".png"
+
+                ws = 271
+                sauv = sauvolaThreshold(img_gray,hardness = sTh, window_size= ws)
+                cv2.imwrite(os.path.join(folder,newName),sauv)
+
+
 def pdfToPNG(pdfPATH,outPath = ""):
   """
     Receive a one page pdf file
@@ -60,12 +96,12 @@ def otsu(img):
     ret3,th3 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
     return th3
 
-def sauvolaThreshold(im,window_size=25):
+def sauvolaThreshold(im,hardness = 1, window_size=25):
   """
   Function to apply Sauvola local threshold
   """
   th = threshold_sauvola(im, window_size=window_size)
-  return (im > 0.85*th).astype(int)*255
+  return (im > hardness*th).astype(int)*255
 
 #source https://docs.opencv.org/3.4/dd/dd7/tutorial_morph_lines_detection.html
 def cleanIsolatedPoints(img,kernel, it=3):
@@ -164,23 +200,10 @@ def detectVerticalLines(gray):
 
 
 if __name__ == '__main__':
-    """
-    files = [os.path.join("noiseRedData","2024-05-31-ExcellentA"),
-    os.path.join("noiseRedData","2024-05-31-FineA"),
-    os.path.join("noiseRedData","2024-05-31-SuperFineA"),
-    os.path.join("noiseRedData","2024-05-31-ExcellentB"),
-    os.path.join("noiseRedData","2024-05-31-FineB"),
-    os.path.join("noiseRedData","2024-05-31-SuperFineB")]
-    pngIMpaths = listOfPdfstoPNG(files)
-    # now do local threshold processing for all images
-    for imFile in pngIMpaths:
-        # read the image as a binary image
-        im = cv2.imread(imFile,0)
-        newName = imFile[:-4]+"localThreshold"+".png"
-        ws = 101 if "Ex" in imFile else 31
-        cv2.imwrite(newName,sauvolaThreshold(im,ws))
 
-    """
+    deNoiseSubFolders(sys.argv[1])
+    sys.exit()
+    ##OLD CODE
     files = [x for x in sys.argv[1:]]
     # now do local threshold processing for all images
     for imFile in files:
