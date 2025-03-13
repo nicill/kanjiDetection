@@ -126,6 +126,7 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:
             # read mask and image, everyone is binary
+            print("reading "+str(os.path.join(maskFolder,f)))
             mask = read_Binary_Mask(os.path.join(maskFolder,f))
             imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
             im = read_Binary_Mask(os.path.join(imageFolder,imageName))
