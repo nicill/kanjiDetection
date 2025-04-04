@@ -11,7 +11,7 @@ import os
 import torch
 
 
-from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest
+from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO
 from train import train_YOLO,makeTrainYAML,get_transform, train_pytorchModel
 from predict import predict_yolo, predict_pytorch
 
@@ -73,6 +73,9 @@ def main(fName):
     conf = read_config(fName)
     print(conf)
 
+    # use the GPU or the CPU, if a GPU is not available
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
     # Do whatever needs to be done
     if conf["Prep"]:
         if conf["DLN"] == "YOLO":
@@ -89,8 +92,24 @@ def main(fName):
                 buildNewDataTesting(conf["Train_input_dir_images"],
                 conf["Train_input_dir_masks"], conf["Test_dir"])
         elif conf["DLN"] == "FRCNN":
-            # use the GPU or the CPU, if a GPU is not available
-            device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+            # change so it reads the train dataset from one folder
+            # and the test from another
+            # use our dataset and defined transformations
+            if False: separateTrainTest(conf["torchData"],os.path.join(conf["torchData"],"separated"),proportion)
+            else:
+                forPytorchFromYOLO(os.path.join(conf["TV_dir"],conf["Train_dir"]),
+            os.path.join(conf["TV_dir"],conf["Valid_dir"]),
+            os.path.join(conf["TV_dir"],conf["Test_dir"]), 
+               conf["torchData"] )
+
+    if conf["Train"]:
+        print("train!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        if conf["DLN"] == "YOLO":
+            yamlTrainFile = "trainAUTO.yaml"
+            makeTrainYAML(conf,yamlTrainFile)
+            train_YOLO(conf,yamlTrainFile)
+        elif conf["DLN"] == "FRCNN":
             if torch.cuda.is_available():
                 print("CUDA AVAILABLE")
             else:
@@ -100,29 +119,11 @@ def main(fName):
             num_classes = 2
             bs = 16 # should probably be a parameter
             proportion = conf["Train_Perc"]/100
-            # change so it reads the train dataset from one folder
-            # and the test from another
-            # use our dataset and defined transformations
-            separateTrainTest(conf["torchData"],os.path.join(conf["torchData"],"separated"),proportion)
+            # parameter in case we want to separate or use the one created by YOLO
+
             dataset = ODDataset(os.path.join(conf["torchData"],"separated","train"),conf["slice"], get_transform())
             dataset_test = ODDataset(os.path.join(conf["torchData"],"separated","test"),conf["slice"], get_transform())
 
-            """
-            dataset = ODDataset(conf["torchData"],conf["slice"], get_transform())
-            indices = torch.randperm(len(dataset)).tolist()
-            divide = int(len(dataset)*proportion)
-            dataset = torch.utils.data.Subset(dataset, indices[:divide])
-            dataset_test = ODDataset(conf["torchData"],conf["slice"], get_transform())
-            dataset_test = torch.utils.data.Subset(dataset_test, indices[divide:])
-            """
-
-    if conf["Train"]:
-        print("train!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        if conf["DLN"] == "YOLO":
-            yamlTrainFile = "trainAUTO.yaml"
-            makeTrainYAML(conf,yamlTrainFile)
-            train_YOLO(conf,yamlTrainFile)
-        elif conf["DLN"] == "FRCNN":
             tParams = {"score":conf["pScoreTH"],"nms":conf["pnmsTH"]}
             # there is a proportion parameter that we may or may not want to touch
             pmodel = train_pytorchModel(dataset = dataset, device = device,

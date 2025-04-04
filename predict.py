@@ -275,7 +275,7 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             # maybe create an output mask here and evaluate with boxesFound like for Pytorch
             masksT = targets[0]["masks"]
             masksT = (masksT > 0.5).squeeze(1).cpu().numpy()
-            accumMask = masksT[0]*255
+            accumMaskT = masksT[0]*255
             for i, maskT in enumerate(masksT):
                 accumMaskT[maskT>0]=255
             gtMask = Image.fromarray((255-accumMask).astype("uint8"), mode="L")

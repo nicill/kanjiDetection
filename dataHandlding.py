@@ -122,7 +122,6 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
         Path(d).mkdir(parents=True, exist_ok=True)
         print("making "+str(d))
 
-
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:
             # read mask and image, everyone is binary
@@ -176,6 +175,8 @@ def separateTrainTest(inFolder, outFolder, proportion = 0.9):
     """
     Given a Folder with Wasan images, separate a proportion of them into trainind and testing
     the folder has two subfolders, images and masks
+    Careful with conventions on file names!!!!!!!!!!!!!!!!!!!!!
+
     """
     # create output directories if they do not exist
     for d in [os.path.join(outFolder),os.path.join(outFolder,"train"),
@@ -191,9 +192,38 @@ def separateTrainTest(inFolder, outFolder, proportion = 0.9):
             imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
 
             # random draw, test or train
-            saveTo = os.path.join(outFolder,"train") if uniform(0, 1) > proportion else os.path.join(outFolder,"test")
+            saveTo = os.path.join(outFolder,"train") if uniform(0, 1) < proportion else os.path.join(outFolder,"test")
             shutil.copyfile( os.path.join(inFolder,"masks",f), os.path.join(saveTo,"masks", f ))
             shutil.copyfile( os.path.join(inFolder,"images",imageName), os.path.join(saveTo,"images", imageName ))
+
+def forPytorchFromYOLO(trFolder,vFolder,teFolder, outFolder):
+    """
+        Receive 3 folders with data stored with YOLO format
+        Convert them into folders with the format that pytorch detectors like
+        that is one folder per dataset (test/train) with images and masks subfolders, 
+        images with almost the same name MASK suffix
+    """
+    def processDir(folder):
+        """
+            Internal function to process one directory (tr/v/te)
+        """
+        for dirpath, dnames, fnames in os.walk(os.path.join(folder,"images")):
+            for f in fnames:
+                maskName = f[:-4]+"MASK"+f[-4:]
+                saveTo = saveDict[folder]
+                shutil.copyfile( os.path.join(folder,"masks",maskName), os.path.join(saveTo,"masks", maskName ))
+                shutil.copyfile( os.path.join(folder,"images",f), os.path.join(saveTo,"images", f ))
+
+    # create output folders and subfolders if necessary
+    for d in [os.path.join(outFolder,"train"),
+              os.path.join(outFolder,"train","images"),os.path.join(outFolder,"train","masks"),
+              os.path.join(outFolder,"test"), os.path.join(outFolder,"test","images"),os.path.join(outFolder,"test","masks")]:
+        Path(d).mkdir(parents=True, exist_ok=True)
+
+    # create a dictioary with the information on where to save
+    saveDict = { trFolder : os.path.join(outFolder,"train"),  vFolder : os.path.join(outFolder,"train") , teFolder : os.path.join(outFolder,"test") }
+
+    list(map(processDir,saveDict.keys()))
 
 
 if __name__ == '__main__':

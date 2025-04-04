@@ -140,8 +140,8 @@ def eraseNonFatRegions(im,fatness):
 
 def precRecall(dScore, invScore):
     """
-        Receive two list, the first with tuples of boxes found and total boxes 
-        (in the GT found in the prediction, dScore and viceversa, invScore in that order)
+        (Receive two list, the first with tuples of boxes found and total boxes 
+        in the GT found in the prediction, dScore and viceversa, invScore in that order)
     """
     gtBoxes = sum([ x[1] for x in dScore ])
     foundGTBoxes = sum([ x[0] for x in dScore ])
