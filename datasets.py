@@ -138,7 +138,7 @@ class ODDataset(Dataset):
         Dataset for object detection with
         pytorch predefined networks
     """
-    def __init__(self, dataFolder = None, slice = 500 , transform = None):
+    def __init__(self, dataFolder = None, yoloFormat = True, slice = 500 , transform = None):
         """
             Receive a folder, should have an "images" and a "masks"
             subfolders with images with pre-defined names
@@ -170,7 +170,10 @@ class ODDataset(Dataset):
             for f in fnames:
                 # read mask and image, everyone is binary
                 mask = read_Binary_Mask(os.path.join(self.maskFolder,f))
-                imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
+
+                # image names are different if we read from original data or from already converted yoloFormat               
+                imageName = f[:-8]+f[-4:] if yoloFormat else f[2:-6]+".tif_resultat_noiseRemoval.tif"
+
                 im = read_Binary_Mask(os.path.join(self.imageFolder,imageName))
 
                 # slice mask and image together, store them in the forOD folder

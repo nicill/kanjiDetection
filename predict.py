@@ -219,17 +219,34 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
     print("evaluating "+str(len(data_loader)))
 
     # store all images in disk (debugging purposes)
-    #count = 0
-    #for images,targets in data_loader:
-    #    for im in images:
-    #        to_pil_image(im).save("./debug/testIM"+str(count)+".png")
-    #        count+=1
+    count = 0
+    for images,targets in data_loader:
+        for im in images:
+            to_pil_image(im).save("./debug/testIM"+str(count)+".png")
+        for t in targets:
+
+            mT = t["masks"]    
+            mT = (mT > 0.5).squeeze(1).cpu().numpy()
+            aMT = mT[0]*255
+
+            # store all ground truth masks too
+            #for i, mT in enumerate(mT):
+            #    aMT[mT>0]=255
+            #gtmA = (255-aMT).astype("uint8")    
+            #gtm = Image.fromarray(gtmA, mode="L")
+
+            #gtm.save("./debug/TestIM"+str(count)+"GTmask.png")
+
+        count+=1
+
+
 
     count=0
     precList = []
     recList = []
     dScore = []
     invScore = []
+    ignoreCount = 0
 
     for images, targets in data_loader:
         # store test images to disk
@@ -268,8 +285,11 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             for i, mask in enumerate(masks):
                 accumMask[mask>0]=255
 
-            outMask = Image.fromarray((255-accumMask).astype("uint8"), mode="L")
-            #outMask.save("./debug/TestIM"+str(count)+"mask.png")
+            # we need both pillow and array format
+            outMaskArray = (255-accumMask).astype("uint8")
+            outMask = Image.fromarray(outMaskArray, mode="L")
+
+            outMask.save("./debug/TestIM"+str(count)+"mask.png")
 
             prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
             # maybe create an output mask here and evaluate with boxesFound like for Pytorch
@@ -278,13 +298,17 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             accumMaskT = masksT[0]*255
             for i, maskT in enumerate(masksT):
                 accumMaskT[maskT>0]=255
-            gtMask = Image.fromarray((255-accumMask).astype("uint8"), mode="L")
+            gtMaskArray = (255-accumMaskT).astype("uint8")    
+            gtMask = Image.fromarray(gtMaskArray, mode="L")
+
+            gtMask.save("./debug/TestIM"+str(count)+"GTmask.png")
 
             try:
-                dScore.append(boxesFound(gtMask,outMask, percentage = False))
-                invScore.append(boxesFound(outMask,gtMask, percentage = False))
-            except:
-                print("image with no boxes, ignoring "+str(ignoreCount))
+                dScore.append(boxesFound(gtMaskArray,outMaskArray, percentage = False))
+                invScore.append(boxesFound(outMaskArray,gtMaskArray, percentage = False))
+            except Exception as X: 
+                print(X)    
+                #print("image with no boxes, ignoring "+str(ignoreCount))
                 ignoreCount+=1
 
 
@@ -297,7 +321,7 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
         precList.append(prec)
         recList.append(rec)
         evaluator_time = time.time() - evaluator_time
-        print("time "+str(evaluator_time))
+        #print("time "+str(evaluator_time))
         count+=1
 
 
@@ -308,9 +332,9 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
     print(invScore)
     print(dScore)
     prec, rec = precRecall(dScore, invScore)
-    print("At the end of the test precision and recall values (boxes found) where "+str(prec)+" and "+str(rec))
+    print("At the end of the test precision and recall values (in terms of centroids) where "+str(prec)+" and "+str(rec))
 
     print(precList)
     print(recList)
-    print("average Precision "+str(sum(precList) / len(precList)))
-    print("average Recall "+str(sum(recList) / len(recList)))
+    print("average Precision (overlap) "+str(sum(precList) / len(precList)))
+    print("average Recall (overlap) "+str(sum(recList) / len(recList)))

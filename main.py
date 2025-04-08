@@ -53,6 +53,8 @@ def read_config(filename):
 
     res_dict["pScoreTH"] = float(conf[section].get('pScoreTH'))
     res_dict["pnmsTH"] = float(conf[section].get('pnmsTH'))
+    res_dict["yoloFormat"] = conf[section].get('yoloFormat') == "yes"
+
 
     section = 'TEST'
     res_dict["Test_ND_dir"] = conf[section].get('testNewDataDir')
@@ -99,9 +101,9 @@ def main(fName):
             if False: separateTrainTest(conf["torchData"],os.path.join(conf["torchData"],"separated"),proportion)
             else:
                 forPytorchFromYOLO(os.path.join(conf["TV_dir"],conf["Train_dir"]),
-            os.path.join(conf["TV_dir"],conf["Valid_dir"]),
-            os.path.join(conf["TV_dir"],conf["Test_dir"]), 
-               conf["torchData"] )
+                os.path.join(conf["TV_dir"],conf["Valid_dir"]),
+                os.path.join(conf["TV_dir"],conf["Test_dir"]), 
+                conf["torchData"] )
 
     if conf["Train"]:
         print("train!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
@@ -117,12 +119,18 @@ def main(fName):
 
             # our dataset has two classes only - background and Kanji
             num_classes = 2
-            bs = 16 # should probably be a parameter
-            proportion = conf["Train_Perc"]/100
+            bs = 32 # should probably be a parameter
+            proportion = conf["Train_Perc"]/100 
             # parameter in case we want to separate or use the one created by YOLO
 
-            dataset = ODDataset(os.path.join(conf["torchData"],"separated","train"),conf["slice"], get_transform())
-            dataset_test = ODDataset(os.path.join(conf["torchData"],"separated","test"),conf["slice"], get_transform())
+            yoloFormat = conf["yoloFormat"]
+            if yoloFormat:
+                dataset = ODDataset(os.path.join(conf["torchData"],"train"), yoloFormat, conf["slice"], get_transform())
+                dataset_test = ODDataset(os.path.join(conf["torchData"],"test"), yoloFormat, conf["slice"], get_transform())
+            else:
+                dataset = ODDataset(os.path.join(conf["torchData"],"separated","train"), yoloFormat, conf["slice"], get_transform())
+                dataset_test = ODDataset(os.path.join(conf["torchData"],"separated","test"), yoloFormat, conf["slice"], get_transform())
+
 
             tParams = {"score":conf["pScoreTH"],"nms":conf["pnmsTH"]}
             # there is a proportion parameter that we may or may not want to touch

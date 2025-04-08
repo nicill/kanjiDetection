@@ -89,6 +89,8 @@ def strictBinarization(im):
     """
     Make sure an image is properly binarize
     works in-place
+    images are opencv format, not pillow
+
     """
     im[im<10]=0
     im[im>1]=255
@@ -162,7 +164,8 @@ def boxesFound(im1, im2, percentage = True, verbose = False):
         """
         inner function to count how
         many boxes in one image
-        are also in the other (centroid)
+        are also in the other 
+        (regarding if the centroid is black)
         """
         nonlocal im2
         x,y = centroid
@@ -191,6 +194,7 @@ def boxListEvaluation(bPred, bGT,th = 50):
     """
         receives two lists of boxes (predicted and ground truth)
         in x1,y1,x2,y2 format and outputs precision, recall,
+        in terms of overlap percentage
     """
     def center(b):
         """
@@ -201,12 +205,14 @@ def boxListEvaluation(bPred, bGT,th = 50):
         """
             goes over all boxes in the ground truth and checks
             if they overlap with the current box more than the threshold
+            store them in a dictionary 
         """
-        for box in gtB:
-            op = overlappingAreaPercentage(b,box)
+        for boxGT in gtB:
+            op = overlappingAreaPercentage(b,boxGT)
             #print("overlap percentage "+str(op))
-            if op>th: return True
-        return False
+            if op>th and str(boxGT) not in tpDict:
+                    tpDict[str(boxGT)] = True
+                
 
     def overlappingAreaPercentage(b1, b2):
         """
@@ -248,12 +254,18 @@ def boxListEvaluation(bPred, bGT,th = 50):
 
         return overlap_percentage
 
-    num_tp = 0
+
+    # Dictionary that contains the boxes in the ground truth that have been overlapped by a predicted box
+    tpDict = {}
+    #num_tp = 0
     for box in bPred:
         # decide if it is a TP or FP.
-        isTP = isTrueP(box,bGT)
-        if isTP: num_tp+=1
+        #isTP = isTrueP(box,bGT)
+        #if isTP: num_tp+=1
+        isTrueP(box,bGT)
+    num_tp = len(tpDict.keys())    
 
+    #print(tpDict)
     print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
     recall = num_tp/len(bGT)
     precision = num_tp/len(bPred)
