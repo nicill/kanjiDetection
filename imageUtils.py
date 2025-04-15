@@ -60,6 +60,26 @@ def cleanUpMask(mask, areaTH = 100, thicknessTH = 20):
             #print("erasing "+str(j))
             #print(np.sum(mask==0))
 
+def cleanUpMaskBlackPixels(mask, im, areaTH = 100, thicknessTH = 20):
+    """
+    Receive a Mask with the position of kanji
+    and the original image (binarized)
+    erase regions that are 
+    have fewer black pixels in the original image than a given threshold 
+    """
+    numLabels, labelIm, stats, centroids = cv2.connectedComponentsWithStats(255-mask)
+
+    #print(np.unique(labelIm))
+    #print(np.sum(mask==0))
+    # Avoid first centroid, unbounded component
+    for j in range(1,len(np.unique(labelIm))):
+        blackInComponent = np.sum((mask[labelIm == j] ) & (im == 0 ))
+        if blackInComponent < areaTH:
+            mask[labelIm == j] = 255
+            print("erasing "+str(j))
+        
+
+
 
 def recoupMasks(masks, weights, th):
     """

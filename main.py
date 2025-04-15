@@ -13,7 +13,7 @@ import torch
 
 from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO
 from train import train_YOLO,makeTrainYAML,get_transform, train_pytorchModel
-from predict import predict_yolo, predict_pytorch
+from predict import predict_yolo, predict_new_Set_yolo, predict_pytorch
 
 from datasets import ODDataset
 
@@ -141,13 +141,17 @@ def main(fName):
 
     if conf["Test"]:
         print("test!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        if conf["DLN"] == "YOLO":
-            predict_yolo(conf)
-        elif conf["DLN"] == "FRCNN":
-            # parameter that controls the confidence of the boxes
-            predConf = 0.7
-            predict_pytorch(dataset_test = dataset_test, model = pmodel,
-            device = device, predConfidence = predConf)
+        newSet = True
+        if not newSet:
+            if conf["DLN"] == "YOLO":
+                predict_yolo(conf)
+            elif conf["DLN"] == "FRCNN":
+                # parameter that controls the confidence of the boxes
+                predConf = 0.7
+                predict_pytorch(dataset_test = dataset_test, model = pmodel,
+                device = device, predConfidence = predConf)
+        else:
+            predict_new_Set_yolo(conf)
 
 if __name__ == "__main__":
 

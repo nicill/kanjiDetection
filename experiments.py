@@ -76,7 +76,7 @@ def computeAndCombineMasks(file):
                     cv2.imwrite(os.path.join(outFolder,"RECOUP"+f+".png"),recoupedMask )
 
 
-def main(fName):
+def classicalDescriptorExperiment(fName):
     """
     main function, read command line parameters
     and call the adequate functions
@@ -171,12 +171,23 @@ def main(fName):
     fDirMSER.close()
     fInvMSER.close()
 
+
+#def combineYoloPytorchModelPredictions():
+    """
+        Receive an input folder, an ouptu folder
+        and two pretrained models (one yolo and on pytorch based)
+        and predict all the Kanji in all the images in the input folder
+    
+    """
+
+
+
 if __name__ == "__main__":
 
     # Configuration file name, can be entered in the command line
     configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
     computeAndCombineMasks(configFile)
-    #main(configFile)
+    #classicalDescriptorExperiment(configFile)
 
 
 

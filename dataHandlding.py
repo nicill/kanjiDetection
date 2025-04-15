@@ -154,7 +154,7 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
 def buildNewDataTesting(imageFolder, maskFolder, outTest):
     """
         Receives a folder with images and another with masks
-        and copies to a "testing" file, those with no mask
+        and copies to a "testing" folder, those with no mask
         (name correspondences between
         mask and image files )
     """

@@ -138,6 +138,38 @@ def testFileList(folder):
     for dirpath, dnames, fnames in os.walk(folder):
         return [os.path.join(folder,f) for f in fnames]
 
+def predict_new_Set_yolo(conf):
+    """"
+    receive a folder with images with no masks and predict them all
+    """
+
+    testPath = conf["Test_ND_dir"]
+    testImageList = testFileList(testPath)
+    modellist = conf["models"]
+    predict_dir = conf["Pred_dir"]
+
+    #print(testPath)
+    #create predictions dir if it does not exist
+    Path(predict_dir).mkdir(parents=True, exist_ok=True)
+    dScore = []
+    invScore = []
+    ignoreCount = 0
+    for imPath in testImageList:
+        print("predicting "+imPath)
+        for currentmodel in modellist: #not doing anything at the moment
+            modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
+
+            detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',
+                                                        model_path=modelpath,device=0)
+            image = cv2.imread(imPath)
+
+            result = get_sliced_prediction(image,detectionModel,slice_height=512
+            ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
+            verbose = False )
+
+            #boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
+            outMask = boxesToMaskFile(result,predict_dir+'/PROVM' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
+
 def predict_yolo(conf):
 
     testPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"images")

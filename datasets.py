@@ -11,7 +11,7 @@ from torch.utils.data.dataset import Dataset
 from torchvision import tv_tensors
 from torchvision.transforms.v2 import functional as F
 
-from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask, cleanUpMask,boxesFromMask
+from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask, cleanUpMask, cleanUpMaskBlackPixels, boxesFromMask
 from pathlib import Path
 from collections import defaultdict
 
@@ -187,6 +187,7 @@ class ODDataset(Dataset):
                         maskW = mask[y:y + wSize[1], x:x + wSize[0]]
                         # discard empty masks
                         cleanUpMask(maskW)
+                        # here we should probably add cleanUpMaskBlackPixels and maybe do it for YOLO too (in buildtrainvalidation?)
                         if np.sum(maskW==0) > 100:
                             # store them both
                             cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
