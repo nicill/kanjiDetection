@@ -5,6 +5,40 @@ from math import sqrt
 import os
 from pathlib import Path
 
+def resampleTestFolder(folder, factor, color = False):
+    """
+        Receive a folder related to a test (contains images, masks folders )
+        Resamples all images according to the factor
+        Puts the result in a new subfolder called "resampled"
+    """
+    outFolder = os.path.join(folder, "resampled")
+    maskFolder = os.path.join(folder, "masks")
+    imageFolder = os.path.join(folder, "images")
+
+    outMaskFolder = os.path.join(outFolder, "masks")
+    outImageFolder = os.path.join(outFolder, "images")
+
+    for d in [outFolder,outMaskFolder,outImageFolder]:
+        # create output directories if they do not exist
+        Path(d).mkdir(parents=True, exist_ok=True)
+
+    # traverse all original masks, resample them and their images
+    for dirpath, dnames, fnames in os.walk(maskFolder):
+        for f in fnames:
+            # read mask and image, everyone is binary
+            mask = read_Binary_Mask(os.path.join(maskFolder,f))
+            imageName = f[:-8]+f[-4:] # images and masks must have the same extension
+            im = read_Color_Image(os.path.join(imageFolder,imageName)) if color else read_Binary_Mask(os.path.join(imageFolder,imageName))
+
+            # reshape with the factor
+            mask = cv2.resize(mask, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
+            im = cv2.resize(im, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
+
+            #store the result
+            cv2.imwrite(os.path.join(outImageFolder,imageName),im)
+            cv2.imwrite(os.path.join(outMaskFolder,f),mask)
+
+
 def read_Color_Image(path):
     #Read tif image or png image
     fileFormat = path[-3:]
@@ -370,3 +404,7 @@ def boxCoordsToFile(file,boxC):
 
     with open(file, 'a') as f:
         list(map( writeTuple, boxC))
+
+if __name__ == "__main__":
+    color = True
+    resampleTestFolder(sys.argv[1],float(sys.argv[2]),color)

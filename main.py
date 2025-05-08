@@ -141,7 +141,7 @@ def main(fName):
 
     if conf["Test"]:
         print("test!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        newSet = True
+        newSet = False
         if not newSet:
             if conf["DLN"] == "YOLO":
                 predict_yolo(conf)
