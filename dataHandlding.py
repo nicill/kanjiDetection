@@ -103,7 +103,7 @@ def predictAllFolders(dataFolder, model,weights, classDict ):
             testAndOutputForAnnotations(os.path.join(dataFolder,d),outFileName,model,weights, classDict)
 
 
-def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
+def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc, doTest = True):
     """
         Receives a folder with images
         And another of masks
@@ -115,9 +115,9 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
     # create output directories if they do not exist
     dirList = [os.path.join(outTrain,"images"),os.path.join(outTrain,"masks"),
     os.path.join(outTrain,"labels"), os.path.join(outVal,"images"),
-    os.path.join(outVal,"masks"), os.path.join(outVal,"labels"),
-    os.path.join(outTest,"images"), os.path.join(outTest,"masks"),
-    os.path.join(outTest,"labels")]
+    os.path.join(outVal,"masks"), os.path.join(outVal,"labels")]
+    if doTest:
+        dirList.extend([os.path.join(outTest,"images"), os.path.join(outTest,"masks"), os.path.join(outTest,"labels")])
     for d in dirList:
         Path(d).mkdir(parents=True, exist_ok=True)
         print("making "+str(d))
@@ -125,7 +125,7 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:
             # read mask and image, everyone is binary
-            print("reading "+str(os.path.join(maskFolder,f)))
+            #print("reading "+str(os.path.join(maskFolder,f)))
             mask = read_Binary_Mask(os.path.join(maskFolder,f))
             imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
             im = read_Binary_Mask(os.path.join(imageFolder,imageName))
@@ -145,7 +145,8 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc):
                 newFileName = f[2:-6]+suffix
 
                 # randomDraw train/val/testIM
-                outDir = outTrain if randint(1,100) < perc else ( outVal if randint(1,100) < 50 else outTest  )
+                if doTest: outDir = outTrain if randint(1,100) < perc else ( outVal if randint(1,100) < 50 else outTest  )
+                else: outDir = outTrain if randint(1,100) < perc else outVal
                 # store files including text file
                 cv2.imwrite(os.path.join(outDir,"images",newFileName+".png"),i)
                 cv2.imwrite(os.path.join(outDir,"masks",newFileName+"MASK.png"),m)
@@ -169,6 +170,48 @@ def buildNewDataTesting(imageFolder, maskFolder, outTest):
                 if not Path(os.path.join(maskFolder,maskName)).is_file():
                     im = cv2.imread(os.path.join(imageFolder,f))
                     cv2.imwrite(os.path.join(outTest,"images",f),im)
+
+def buildTestingFromSingleFolderSakuma2(inFolder, outTest,  slice, denoised = True):
+    """
+        Receive one folder in sakuma2 format, traverse all masks
+        create a testing set with image and mask subfolders
+        either with denoised or non denoised data
+    """    
+    dirList = [os.path.join(outTest,"images"), os.path.join(outTest,"masks"), os.path.join(outTest,"labels")]
+    for d in dirList:
+        Path(d).mkdir(parents=True, exist_ok=True)
+        print("making "+str(d))
+
+ 
+    for dirpath, dnames, fnames in os.walk(inFolder):
+        for f in fnames:
+            if "KP" in f: # we are dealing with a Mask.
+                # read mask and image, everyone is binary
+                #print("reading "+str(os.path.join(inFolder,f)))
+                mask = read_Binary_Mask(os.path.join(inFolder,f))
+        
+                imageName = f[2:-6]+"denoised"+f[-4:] if denoised else f[2:-6]+f[-4:]
+                im = read_Binary_Mask(os.path.join(inFolder,imageName)) if denoised else color_to_gray(read_Color_Image(os.path.join(inFolder,imageName)) )
+
+                # Masks are not the perfect size, reshape
+                mask = cv2.resize(mask, (im.shape[1],im.shape[0]))
+
+                # binarize mask
+                mask[mask<10] = 0
+                mask[mask>10] = 255
+
+                # call slice and box
+                sIML = sliceAndBox(im,mask,slice)
+
+                # store results (make up names)
+                for suffix,i,m,l in sIML:
+                    newFileName = f[2:-6]+suffix
+
+                    outDir = outTest
+                    # store files including text file
+                    cv2.imwrite(os.path.join(outDir,"images",newFileName+".png"),i)
+                    cv2.imwrite(os.path.join(outDir,"masks",newFileName+"MASK.png"),m)
+                    boxCoordsToFile(os.path.join(outDir,"labels",newFileName+".txt"),l)
 
 
 def separateTrainTest(inFolder, outFolder, proportion = 0.9):

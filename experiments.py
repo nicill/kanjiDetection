@@ -11,9 +11,11 @@ import cv2
 from pathlib import Path
 from itertools import product
 
-from main import read_config
+from config import read_config
 from predict import detectBlobsMSER,detectBlobsDOG
-from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
+from imageUtils import boxesFound,read_Binary_Mask,recoupMasks,color_to_gray
+
+from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2
 
 def makeParamDicts(pars,vals):
     """
@@ -172,26 +174,35 @@ def classicalDescriptorExperiment(fName):
     fInvMSER.close()
 
 
-#def combineYoloPytorchModelPredictions():
+def DLExperiment(conf, doYolo = False, doFRCNN = False):
     """
-        Receive an input folder, an ouptu folder
-        and two pretrained models (one yolo and on pytorch based)
-        and predict all the Kanji in all the images in the input folder
-    
+        Experiment to compare different values of DL networks 
     """
+    if  conf["Prep"]:
+        # Compute train, validation, DO NOT do test
+        buildTRVT(conf["Train_input_dir_images"], conf["Train_input_dir_masks"],conf["slice"],
+        os.path.join(conf["TV_dir"],conf["Train_dir"]), os.path.join(conf["TV_dir"],conf["Valid_dir"]),
+        os.path.join(conf["TV_dir"],conf["Test_dir"]),  conf["Train_Perc"], doTest = False)
 
+        # Now test comes from another source
+        buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"])
 
+    # now train, all possible parameters careful with model names
 
 if __name__ == "__main__":
 
     # Configuration file name, can be entered in the command line
     configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
-    computeAndCombineMasks(configFile)
+    
+    #computeAndCombineMasks(configFile)
     #classicalDescriptorExperiment(configFile)
-
-
-
     #BEST
     #DOG 77.5665178571429	 {'over': 0.5;min_s': 20;max_s': 100}
-
     # MSER 72.6126785714286	 {'delta': 5;minA': 500;maxA': 25000}
+
+
+    # DL experiment
+    conf = read_config(configFile)
+    print(conf)
+
+    DLExperiment(conf)

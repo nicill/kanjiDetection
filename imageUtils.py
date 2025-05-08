@@ -62,6 +62,12 @@ def read_Binary_Mask(path):
     retVal[retVal>50] = 255
     return retVal
 
+def color_to_gray(im):
+    """
+    receive a color image, turn it to grayscale
+    """
+    return cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+
 def sliding_window(image, stepSize, windowSize):
     # slide a window across the image
     for y in range(0, image.shape[0], stepSize):
@@ -94,27 +100,46 @@ def cleanUpMask(mask, areaTH = 100, thicknessTH = 20):
             #print("erasing "+str(j))
             #print(np.sum(mask==0))
 
-def cleanUpMaskBlackPixels(mask, im, areaTH = 100, thicknessTH = 20):
+def cleanUpMaskBlackPixels(mask, im, areaTH = 100):
     """
     Receive a Mask with the position of kanji
     and the original image (binarized)
-    erase regions that are 
-    have fewer black pixels in the original image than a given threshold 
+    erase regions that have fewer black pixels 
+    in the original image than a given threshold 
     """
     numLabels, labelIm, stats, centroids = cv2.connectedComponentsWithStats(255-mask)
 
-    #print(np.unique(labelIm))
-    #print(np.sum(mask==0))
     # Avoid first centroid, unbounded component
     for j in range(1,len(np.unique(labelIm))):
-        blackInComponent = np.sum((mask[labelIm == j] ) & (im == 0 ))
+        #aux = im.copy() # copy image so we do not break anything
+
+        blackInComponent = np.sum((labelIm == j ) & (im < 100 )) # count pixels in the mask that are black in the original image 
         if blackInComponent < areaTH:
             mask[labelIm == j] = 255
-            print("erasing "+str(j))
+            #print("erasing "+str(j))
+    return mask
+
+def cleanUpFolderBlackPixels(folder, sakuma1 = False):
+    """
+        traverse a folder with particular naming conventions 
+        ( annotations start with KP)
+        and clean up the masks, OVERWRITES!
+        avoids subfolders   
+        the sakuma 1 flag is to process the older file naming
+    """    
+    for dirpath, dnames, fnames in os.walk(folder):
+        for f in fnames:
+            if "KP" in f: #annotation file
+                print("fixing "+str(f))
+                # read mask and image, everyone is binary
+                mask = read_Binary_Mask(os.path.join(folder,f))
+                imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif" if sakuma1 else f[2:-6]+f[-4:] # images and masks must have the same extension
+                im = read_Binary_Mask(os.path.join(folder,imageName)) if sakuma1 else color_to_gray(read_Color_Image(os.path.join(folder,imageName)) )
+                cv2.imwrite(os.path.join(folder,f),cleanUpMaskBlackPixels( mask , im , 100)) 
+        break # we do not want to chek subfolders
+
+
         
-
-
-
 def recoupMasks(masks, weights, th):
     """
     Function to combine a list of
@@ -406,5 +431,13 @@ def boxCoordsToFile(file,boxC):
         list(map( writeTuple, boxC))
 
 if __name__ == "__main__":
-    color = True
-    resampleTestFolder(sys.argv[1],float(sys.argv[2]),color)
+    #color = True
+    #resampleTestFolder(sys.argv[1],float(sys.argv[2]),color)
+
+    # single image clean up small regions
+    #mask = read_Binary_Mask(sys.argv[1])
+    #im = color_to_gray(read_Color_Image(sys.argv[2]))
+    #cv2.imwrite(sys.argv[3],cleanUpMaskBlackPixels( mask , im , 100)) 
+
+    # folder clean up black pixels, careful as it overwrites.
+    cleanUpFolderBlackPixels(sys.argv[1], sakuma1 = True)
