@@ -14,6 +14,7 @@ from itertools import product
 from config import read_config
 from predict import detectBlobsMSER,detectBlobsDOG
 from imageUtils import boxesFound,read_Binary_Mask,recoupMasks,color_to_gray
+from train import train_YOLO,makeTrainYAML
 
 from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2
 
@@ -29,6 +30,15 @@ def makeParamDicts(pars,vals):
     prod = list(product(*vals))
     res = [dict(zip(pars,tup)) for tup in prod]
     return res
+
+def paramsDictToString(aDict):
+    """
+    Function to create a string from a params dict
+    """
+    ret = ""
+    for k,v in aDict.items():
+        ret+=str(k)+str(v)
+    return ret
 
 def computeAndCombineMasks(file):
     """
@@ -176,7 +186,7 @@ def classicalDescriptorExperiment(fName):
 
 def DLExperiment(conf, doYolo = False, doFRCNN = False):
     """
-        Experiment to compare different values of DL networks 
+        Experiment to compare different values of DL networks
     """
     if  conf["Prep"]:
         # Compute train, validation, DO NOT do test
@@ -185,15 +195,58 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
         os.path.join(conf["TV_dir"],conf["Test_dir"]),  conf["Train_Perc"], doTest = False)
 
         # Now test comes from another source
+        # careful, this contains a hardcoded resampling factor!
         buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"])
 
-    # now train, all possible parameters careful with model names
+    if conf["Train"]:
+        print("train YOLO ")
+        # start YOLO experiment
+        # Yolo Params is a list of dictionaries with all possible parameters
+        yoloParams = makeParamDicts(["scale", "mosaic"],
+                                    [[0.2,0.5,0.9],[0.0,0.5]])
+        for params in yoloParams:
+            yamlTrainFile = "trainEXP.yaml"
+            prefix = "exp"+paramsDictToString(params)
+            makeTrainYAML(conf,yamlTrainFile,params)
+            train_YOLO(conf, yamlTrainFile, prefix)
+
+        sys.exit()
+        print("train FRCNN")
+
+        # our dataset has two classes only - background and Kanji
+        num_classes = 2
+        bs = 32 # should probably be a parameter
+        proportion = conf["Train_Perc"]/100
+        # parameter in case we want to separate or use the one created by YOLO
+
+        dataset = ODDataset(os.path.join(conf["torchData"],"train"), yoloFormat, conf["slice"], get_transform())
+        dataset_test = ODDataset(os.path.join(conf["torchData"],"test"), yoloFormat, conf["slice"], get_transform())
+        # case for not yolo format, not in use I think
+        #dataset = ODDataset(os.path.join(conf["torchData"],"separated","train"), yoloFormat, conf["slice"], get_transform())
+        #dataset_test = ODDataset(os.path.join(conf["torchData"],"separated","test"), yoloFormat, conf["slice"], get_transform())
+
+
+        frcnnParams = makeParamDicts(["score", "nms"],
+                                    [[0.05,0.5],[0.25,0.5]])
+        # score: Increase to filter out low-confidence boxes (default ~0.05)
+        # nms: Reduce to suppress more overlapping boxes (default ~0.5)
+
+        for tParams in frcnnParams:
+            filePath = "exp"+paramsDictToString(tParams)+"fasterrcnn_resnet50_fpn.pth"
+            #tParams = {"score":conf["pScoreTH"],"nms":conf["pnmsTH"]}
+            # there is a proportion parameter that we may or may not want to touch
+            pmodel = train_pytorchModel(dataset = dataset, device = device,
+            num_classes = num_classes, file_path = conf["pmodel"],
+            num_epochs = conf["ep"], trainAgain=conf["again"],
+            proportion = proportion, trainParams = tParams)
+
+
 
 if __name__ == "__main__":
 
     # Configuration file name, can be entered in the command line
     configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
-    
+
     #computeAndCombineMasks(configFile)
     #classicalDescriptorExperiment(configFile)
     #BEST

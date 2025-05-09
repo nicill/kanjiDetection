@@ -21,32 +21,38 @@ from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
 
 torch.backends.cudnn.benchmark = True
 
-def makeTrainYAML(conf, fileName = 'trainAUTO.yaml'):
+def makeTrainYAML(conf, fileName = 'trainAUTO.yaml', pDict = {}):
     """
     Function to write a yaml file
     """
     data = { "names": {0: 'Kanji'}, "path": conf["TV_dir"], "train": conf["Train_dir"],
-            "val": conf["Valid_dir"] }
+            "val": conf["Valid_dir"]}
     with open(fileName, 'w') as outfile:
         yaml.dump(data, outfile, default_flow_style=False)
 
 
-def train_YOLO(conf, datasrc):
+def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     """
     Train a YOlO model from a
     train and validation folder
     """
     resfolder = conf["Train_res"]
     epochs = conf["ep"]
-    name = 'combined_data_'+str(epochs)+'ex'
+    name = prefix+"epochs"+str(epochs)+'ex'
     valfolder = conf["Valid_res"]
     imgsize = conf["slice"]
     resultstxt = os.path.join(resfolder,valfolder,'results_' + name + '.txt')
 
     settings.update({'runs_dir':resfolder})
     model = YOLO('yolov8n.pt')
-    results = model.train(data=datasrc,epochs=epochs,
-                imgsz=imgsize,name=name,device=0)
+
+    # now also add any possible parameters from an experiment
+    scVal = 0.5 if "scale" not in params else params["scale"]
+    mosVal = 1.0 if "mosaic" not in params else params["mosaic"]
+
+    results = model.train(data=datasrc, epochs=epochs, imgsz=imgsize,
+                name=name,device=0, patience = 5, exist_ok = True,
+                scale = scVal, mosaic = mosVal)
     results = model.val(project=resfolder,name=valfolder,save_json=True)
 
     with open(resultstxt,'w+') as res:

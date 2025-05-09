@@ -55,4 +55,3 @@ def read_config(filename):
     res_dict["Masks_dir"] = conf[section].get('newMasksDir')
 
     return res_dict
-

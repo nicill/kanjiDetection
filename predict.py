@@ -257,14 +257,14 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             to_pil_image(im).save("./debug/testIM"+str(count)+".png")
         for t in targets:
 
-            mT = t["masks"]    
+            mT = t["masks"]
             mT = (mT > 0.5).squeeze(1).cpu().numpy()
             aMT = mT[0]*255
 
             # store all ground truth masks too
             #for i, mT in enumerate(mT):
             #    aMT[mT>0]=255
-            #gtmA = (255-aMT).astype("uint8")    
+            #gtmA = (255-aMT).astype("uint8")
             #gtm = Image.fromarray(gtmA, mode="L")
 
             #gtm.save("./debug/TestIM"+str(count)+"GTmask.png")
@@ -330,7 +330,7 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             accumMaskT = masksT[0]*255
             for i, maskT in enumerate(masksT):
                 accumMaskT[maskT>0]=255
-            gtMaskArray = (255-accumMaskT).astype("uint8")    
+            gtMaskArray = (255-accumMaskT).astype("uint8")
             gtMask = Image.fromarray(gtMaskArray, mode="L")
 
             gtMask.save("./debug/TestIM"+str(count)+"GTmask.png")
@@ -338,8 +338,8 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             try:
                 dScore.append(boxesFound(gtMaskArray,outMaskArray, percentage = False))
                 invScore.append(boxesFound(outMaskArray,gtMaskArray, percentage = False))
-            except Exception as X: 
-                print(X)    
+            except Exception as X:
+                print(X)
                 #print("image with no boxes, ignoring "+str(ignoreCount))
                 ignoreCount+=1
 

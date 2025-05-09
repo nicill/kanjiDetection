@@ -176,25 +176,33 @@ def buildTestingFromSingleFolderSakuma2(inFolder, outTest,  slice, denoised = Tr
         Receive one folder in sakuma2 format, traverse all masks
         create a testing set with image and mask subfolders
         either with denoised or non denoised data
-    """    
+        careful, contains a hardcoded resampling factor! so the sizes
+        of Kanji are the same as for the sakuma 1 database
+    """
     dirList = [os.path.join(outTest,"images"), os.path.join(outTest,"masks"), os.path.join(outTest,"labels")]
     for d in dirList:
         Path(d).mkdir(parents=True, exist_ok=True)
         print("making "+str(d))
 
- 
+
     for dirpath, dnames, fnames in os.walk(inFolder):
         for f in fnames:
             if "KP" in f: # we are dealing with a Mask.
                 # read mask and image, everyone is binary
                 #print("reading "+str(os.path.join(inFolder,f)))
                 mask = read_Binary_Mask(os.path.join(inFolder,f))
-        
+
                 imageName = f[2:-6]+"denoised"+f[-4:] if denoised else f[2:-6]+f[-4:]
                 im = read_Binary_Mask(os.path.join(inFolder,imageName)) if denoised else color_to_gray(read_Color_Image(os.path.join(inFolder,imageName)) )
 
                 # Masks are not the perfect size, reshape
                 mask = cv2.resize(mask, (im.shape[1],im.shape[0]))
+
+                # reshape so that the size fits that of Sakuma1
+                factor = 0.45
+                mask = cv2.resize(mask, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
+                im = cv2.resize(im, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
+
 
                 # binarize mask
                 mask[mask<10] = 0
@@ -243,7 +251,7 @@ def forPytorchFromYOLO(trFolder,vFolder,teFolder, outFolder):
     """
         Receive 3 folders with data stored with YOLO format
         Convert them into folders with the format that pytorch detectors like
-        that is one folder per dataset (test/train) with images and masks subfolders, 
+        that is one folder per dataset (test/train) with images and masks subfolders,
         images with almost the same name MASK suffix
     """
     def processDir(folder):
