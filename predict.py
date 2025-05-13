@@ -170,7 +170,7 @@ def predict_new_Set_yolo(conf):
             #boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
             outMask = boxesToMaskFile(result,predict_dir+'/PROVM' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
 
-def predict_yolo(conf):
+def predict_yolo(conf, prefix = 'combined_data_'):
 
     testPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"images")
     maskPath =os.path.join(conf["TV_dir"],conf["Test_dir"],"masks")
@@ -185,47 +185,49 @@ def predict_yolo(conf):
     invScore = []
     ignoreCount = 0
     for imPath in testImageList:
-        print("predicting "+imPath)
-        for currentmodel in modellist: #not doing anything at the moment
-            modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
+        print("predictYOLO, predicting "+imPath)
+        currentmodel = prefix if len(conf["models"])<1 else conf["models"][0] # should get totally rid of conf["models"]
 
-            detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',
-                                                        model_path=modelpath,device=0)
-            image = cv2.imread(imPath)
-            maskName = os.path.basename(imPath)[:-4]+"MASK.png"
+        modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
+        print("predictYOLO, model path "+str(modelpath))
 
-            result = get_sliced_prediction(image,detectionModel,slice_height=512
-            ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
-            verbose = False )
+        detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',
+                                                    model_path=modelpath,device=0)
+        image = cv2.imread(imPath)
+        maskName = os.path.basename(imPath)[:-4]+"MASK.png"
 
-            boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
-            outMask = boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
+        result = get_sliced_prediction(image,detectionModel,slice_height=512
+        ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
+        verbose = False )
 
-            # evaluate
-            gtMaskPath = os.path.join(maskPath,maskName)
-            gtMask = cv2.imread(gtMaskPath,0)
-            try:
-                dScore.append(boxesFound(gtMask,outMask, percentage = False))
-                invScore.append(boxesFound(outMask,gtMask, percentage = False))
-            except:
-                print("image with no boxes, ignoring "+str(ignoreCount))
-                ignoreCount+=1
+        boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
+        outMask = boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
 
-            visualize_object_predictions(
-                image=np.ascontiguousarray(result.image),
-                object_prediction_list=result.object_prediction_list,
-                rect_th=2,
-                text_size=0.8,
-                text_th=1,
-                color=(255,0,0),
-                output_dir=predict_dir,
-                file_name='boxes_' + currentmodel + '_' +os.path.basename(imPath),
-                export_format='png'
-            )
+        # evaluate
+        gtMaskPath = os.path.join(maskPath,maskName)
+        gtMask = cv2.imread(gtMaskPath,0)
+        try:
+            dScore.append(boxesFound(gtMask,outMask, percentage = False))
+            invScore.append(boxesFound(outMask,gtMask, percentage = False))
+        except:
+            print("image with no boxes, ignoring "+str(ignoreCount))
+            ignoreCount+=1
+
+        visualize_object_predictions(
+            image=np.ascontiguousarray(result.image),
+            object_prediction_list=result.object_prediction_list,
+            rect_th=2,
+            text_size=0.8,
+            text_th=1,
+            color=(255,0,0),
+            output_dir=predict_dir,
+            file_name='boxes_' + currentmodel + '_' +os.path.basename(imPath),
+            export_format='png'
+        )
 
     # computations
-    print(invScore)
-    print(dScore)
+    #print(invScore)
+    #print(dScore)
     prec, rec = precRecall(dScore, invScore)
     print("At the end of the test precision and recall values where "+str(prec)+" and "+str(rec))
     return prec,rec

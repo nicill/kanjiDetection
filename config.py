@@ -47,8 +47,9 @@ def read_config(filename):
 
     section = 'TEST'
     res_dict["Test_ND_dir"] = conf[section].get('testNewDataDir')
-    res_dict["models"] = conf[section].get('modelist').strip().split(",")
+    res_dict["models"] = [] if "modelist" not in conf else conf[section].get('modelist').strip().split(",")
     res_dict["pmodel"] = conf[section].get('pmodel')
+    res_dict["outTEXT"] =  conf[section].get('outTextFile')
 
     res_dict["Pred_dir"] = conf[section].get('predDir')
     res_dict["Exp_dir"] = conf[section].get('expDir')

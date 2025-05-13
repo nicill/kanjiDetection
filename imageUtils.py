@@ -231,7 +231,9 @@ def precRecall(dScore, invScore):
     TPBoxes = sum([ x[0] for x in invScore ])
 
     #return precision and recall
-    return 100*TPBoxes/predBoxes,100*foundGTBoxes/gtBoxes
+    prec = 0 if predBoxes == 0 else 100*TPBoxes/predBoxes
+    rec =  0 if gtBoxes == 0 else 100*foundGTBoxes/gtBoxes
+    return prec , rec
 
 def boxesFound(im1, im2, percentage = True, verbose = False):
     """

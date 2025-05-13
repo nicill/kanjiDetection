@@ -39,7 +39,7 @@ def paramsDictToString(aDict, sep = ""):
     ret = ""
     for k,v in aDict.items():
         ret+=str(k)+sep+str(v)+sep
-    return ret[:-1]
+    return ret[:-1] if sep != "" else ret
 
 def computeAndCombineMasks(file):
     """
@@ -199,13 +199,18 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
         # careful, this contains a hardcoded resampling factor!
         buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"])
 
-    f = open("outfile.txt","w+")
+    f = open(conf["outTEXT"],"w+")
     if conf["Train"]:
         print("train YOLO ")
         # start YOLO experiment
         # Yolo Params is a list of dictionaries with all possible parameters
         yoloParams = makeParamDicts(["scale", "mosaic"],
                                     [[0.2,0.5,0.9],[0.0,0.5]])
+        # Print first line of results file    
+        for k in yoloParams[0].keys():
+            f.write(str(k)+",")
+        f.write("PRECISION"+","+"RECALL"+"\n")
+
         for params in yoloParams:
             # Train this version of the YOLO NETWORK
             yamlTrainFile = "trainEXP.yaml"
@@ -215,8 +220,9 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
 
             # Test this version of the YOLO Network
             print("TESTING YOLO!!!!!!!!!!!!!!!!!")
-            prec,rec = predict_yolo(conf)
-            f.write(str(paramsDictToString(params,sep=",")))
+            prec,rec = predict_yolo(conf,prefix+"epochs"+str(conf["ep"])+'ex' )
+            f.write(str(paramsDictToString(params,sep=","))+","+str(prec)+","+str(rec)+"\n")
+            f.flush()
 
         sys.exit()
         print("train FRCNN")
