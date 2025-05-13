@@ -8,13 +8,17 @@ import configparser
 import sys
 import os
 import cv2
+import torch
+
 from pathlib import Path
 from itertools import product
+
+from datasets import ODDataset
 
 from config import read_config
 from predict import detectBlobsMSER,detectBlobsDOG
 from imageUtils import boxesFound,read_Binary_Mask,recoupMasks,color_to_gray
-from train import train_YOLO,makeTrainYAML
+from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel
 
 from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2
 from predict import predict_yolo, predict_pytorch
@@ -189,6 +193,9 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
     """
         Experiment to compare different values of DL networks
     """
+    # use the GPU or the CPU, if a GPU is not available
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
     if  conf["Prep"]:
         # Compute train, validation, DO NOT do test
         buildTRVT(conf["Train_input_dir_images"], conf["Train_input_dir_masks"],conf["slice"],
@@ -199,60 +206,76 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
         # careful, this contains a hardcoded resampling factor!
         buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"])
 
-    f = open(conf["outTEXT"],"w+")
-    if conf["Train"]:
-        print("train YOLO ")
-        # start YOLO experiment
-        # Yolo Params is a list of dictionaries with all possible parameters
-        yoloParams = makeParamDicts(["scale", "mosaic"],
-                                    [[0.2,0.5,0.9],[0.0,0.5]])
-        # Print first line of results file    
+    f = open(conf["outTEXT"][:-4]+"YOLO"+conf["outTEXT"][-4:],"w+")
+    doYolo = False
+    print("train YOLO? "+str(doYolo))
+    # start YOLO experiment
+    # Yolo Params is a list of dictionaries with all possible parameters
+    yoloParams = makeParamDicts(["scale", "mosaic"],
+                                [[0.5,0.9],[0.0,1.0]]) if doYolo else []
+    # Print first line of results file    
+    if yoloParams != []:
         for k in yoloParams[0].keys():
             f.write(str(k)+",")
         f.write("PRECISION"+","+"RECALL"+"\n")
 
-        for params in yoloParams:
-            # Train this version of the YOLO NETWORK
-            yamlTrainFile = "trainEXP.yaml"
-            prefix = "exp"+paramsDictToString(params)
-            makeTrainYAML(conf,yamlTrainFile,params)
+    for params in yoloParams:
+        # Train this version of the YOLO NETWORK
+        yamlTrainFile = "trainEXP.yaml"
+        prefix = "exp"+paramsDictToString(params)
+        makeTrainYAML(conf,yamlTrainFile,params)
+        if conf["Train"]:
             train_YOLO(conf, yamlTrainFile, prefix)
 
-            # Test this version of the YOLO Network
-            print("TESTING YOLO!!!!!!!!!!!!!!!!!")
-            prec,rec = predict_yolo(conf,prefix+"epochs"+str(conf["ep"])+'ex' )
-            f.write(str(paramsDictToString(params,sep=","))+","+str(prec)+","+str(rec)+"\n")
-            f.flush()
+        # Test this version of the YOLO Network
+        print("TESTING YOLO!!!!!!!!!!!!!!!!!")
+        prec,rec = predict_yolo(conf,prefix+"epochs"+str(conf["ep"])+'ex' )
+        for k,v in params.items():
+            f.write(str(v)+",")
+        f.write(str(prec)+","+str(rec)+"\n")
+        f.flush()
 
-        sys.exit()
-        print("train FRCNN")
+    f.close()
 
-        # our dataset has two classes only - background and Kanji
-        num_classes = 2
-        bs = 32 # should probably be a parameter
-        proportion = conf["Train_Perc"]/100
-        # parameter in case we want to separate or use the one created by YOLO
+    doFRCNN = True
+    print("train FRCNN? "+str(doFRCNN))
+    f = open(conf["outTEXT"][:-4]+"FRCNN"+conf["outTEXT"][-4:],"w+")
+    
+    # our dataset has two classes only - background and Kanji
+    num_classes = 2
+    bs = 64 # should probably be a parameter
+    proportion = conf["Train_Perc"]/100
 
-        dataset = ODDataset(os.path.join(conf["torchData"],"train"), yoloFormat, conf["slice"], get_transform())
-        dataset_test = ODDataset(os.path.join(conf["torchData"],"test"), yoloFormat, conf["slice"], get_transform())
-        # case for not yolo format, not in use I think
-        #dataset = ODDataset(os.path.join(conf["torchData"],"separated","train"), yoloFormat, conf["slice"], get_transform())
-        #dataset_test = ODDataset(os.path.join(conf["torchData"],"separated","test"), yoloFormat, conf["slice"], get_transform())
+    dataset = ODDataset(os.path.join(conf["torchData"],"train"), True, conf["slice"], get_transform())
+    dataset_test = ODDataset(os.path.join(conf["torchData"],"test"), True, conf["slice"], get_transform())
+
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
+                                [["maskrcnn","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doFRCNN else []
+    # score: Increase to filter out low-confidence boxes (default ~0.05)
+    # nms: Reduce to suppress more overlapping boxes (default ~0.5)
+    # predconf prediction confidence in testing
+
+    if frcnnParams != []:
+        for k in frcnnParams[0].keys():
+            f.write(str(k)+",")
+        f.write("PRECC"+","+"RECC"+","+"PRECO"+","+"reco"+"\n")
 
 
-        frcnnParams = makeParamDicts(["score", "nms"],
-                                    [[0.05,0.5],[0.25,0.5]])
-        # score: Increase to filter out low-confidence boxes (default ~0.05)
-        # nms: Reduce to suppress more overlapping boxes (default ~0.5)
+    for tParams in frcnnParams:
+        filePath = "exp"+paramsDictToString(tParams)+"fasterrcnn_resnet50_fpn.pth"
+        #tParams = {"score":conf["pScoreTH"],"nms":conf["pnmsTH"]}
+        # there is a proportion parameter that we may or may not want to touch
+        if conf["Train"]:
+            pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
+                                        num_epochs = conf["ep"], trainAgain=conf["again"], proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
 
-        for tParams in frcnnParams:
-            filePath = "exp"+paramsDictToString(tParams)+"fasterrcnn_resnet50_fpn.pth"
-            #tParams = {"score":conf["pScoreTH"],"nms":conf["pnmsTH"]}
-            # there is a proportion parameter that we may or may not want to touch
-            pmodel = train_pytorchModel(dataset = dataset, device = device,
-            num_classes = num_classes, file_path = conf["pmodel"],
-            num_epochs = conf["ep"], trainAgain=conf["again"],
-            proportion = proportion, trainParams = tParams)
+        predConf = tParams["predconf"]
+        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, mType = tParams["modelType"])
+
+        for k,v in tParams.items():
+            f.write(str(v)+",")
+        f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+"\n")
+        f.flush()
 
     f.close()
 

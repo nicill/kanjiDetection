@@ -347,11 +347,58 @@ def boxListEvaluation(bPred, bGT,th = 50):
     num_tp = len(tpDict.keys())    
 
     #print(tpDict)
-    print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
+    #print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
     recall = num_tp/len(bGT)
     precision = num_tp/len(bPred)
 
     return precision,recall
+
+def boxListEvaluationCentroids(bPred, bGT):
+    """
+        receives two lists of boxes (predicted and ground truth)
+        in x1,y1,x2,y2 format and outputs precision, recall,
+        in terms of centroids
+    """
+    def center(b):
+        """
+            returns the center of a box in x1,y1,x2,y2 format
+        """
+        return b[0]+(b[2]-b[0])/2,b[1]+(b[3]-b[1])/2
+    
+    def inside(b,p):
+        """
+        Check if p is inside box b
+        """
+        return b[0] <= p[0] <= b[2] and b[1] <= p[1] <= b[3]
+
+
+    def isTrueP(b,gtB):
+        """
+            goes over all boxes in the ground truth and checks
+            if any of them contains the centroid of the current box
+        """
+        c = center(b)
+        for boxGT in gtB:
+            if inside(boxGT,c) and str(boxGT) not in tpDict:
+                    tpDict[str(boxGT)] = True
+                
+    # Dictionary that contains the boxes in the ground truth that have been overlapped by a predicted box
+    tpDict = {}
+    #num_tp = 0
+    for box in bPred:
+        # decide if it is a TP or FP.
+        #isTP = isTrueP(box,bGT)
+        #if isTP: num_tp+=1
+        isTrueP(box,bGT)
+    num_tp = len(tpDict.keys())    
+
+    #print(tpDict)
+    #print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
+    recall = num_tp/len(bGT)
+    precision = num_tp/len(bPred)
+
+    return precision,recall
+
 
 
 def boxesFromMask(img, cl = 0, yoloFormat = True):

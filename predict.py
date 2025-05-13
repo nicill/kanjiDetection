@@ -12,7 +12,7 @@ import numpy as np
 import os
 import torch
 from train import collate_fn
-from imageUtils import boxListEvaluation, boxesFound, precRecall
+from imageUtils import boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall
 
 from torchvision.transforms.functional import to_pil_image
 
@@ -189,7 +189,7 @@ def predict_yolo(conf, prefix = 'combined_data_'):
         currentmodel = prefix if len(conf["models"])<1 else conf["models"][0] # should get totally rid of conf["models"]
 
         modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
-        print("predictYOLO, model path "+str(modelpath))
+        #print("predictYOLO, model path "+str(modelpath))
 
         detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',
                                                     model_path=modelpath,device=0)
@@ -233,7 +233,16 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     return prec,rec
 
 @torch.no_grad()
-def predict_pytorch(dataset_test, model, device,predConfidence):
+def predict_pytorch(dataset_test, model, device, predConfidence,  mType = "maskrcnn"):
+    if mType == "maskrcnn":
+        return predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence)
+    elif mType == "fasterrcnn":
+        return predict_pytorch_fasterRCNN(dataset_test, model, device, predConfidence)
+    else: raise Exception("predict pytorch, unrecognized model type")
+
+
+@torch.no_grad()
+def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
     """
         Inference for pytorch object detectors
     """
@@ -254,15 +263,15 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
     print("evaluating "+str(len(data_loader)))
 
     # store all images in disk (debugging purposes)
-    count = 0
-    for images,targets in data_loader:
-        for im in images:
-            to_pil_image(im).save("./debug/testIM"+str(count)+".png")
-        for t in targets:
+    #count = 0
+    #for images,targets in data_loader:
+    #    for im in images:
+    #        to_pil_image(im).save("./debug/testIM"+str(count)+".png")
+    #    for t in targets:
 
-            mT = t["masks"]
-            mT = (mT > 0.5).squeeze(1).cpu().numpy()
-            aMT = mT[0]*255
+    #        mT = t["masks"]
+    #        mT = (mT > 0.5).squeeze(1).cpu().numpy()
+    #        aMT = mT[0]*255
 
             # store all ground truth masks too
             #for i, mT in enumerate(mT):
@@ -272,9 +281,7 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
 
             #gtm.save("./debug/TestIM"+str(count)+"GTmask.png")
 
-        count+=1
-
-
+    #    count+=1
 
     count=0
     precList = []
@@ -324,10 +331,10 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             outMaskArray = (255-accumMask).astype("uint8")
             outMask = Image.fromarray(outMaskArray, mode="L")
 
-            outMask.save("./debug/TestIM"+str(count)+"mask.png")
+            #outMask.save("./debug/TestIM"+str(count)+"mask.png")
 
             prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
-            # maybe create an output mask here and evaluate with boxesFound like for Pytorch
+            # create an output mask here and evaluate with boxesFound like for Pytorch
             masksT = targets[0]["masks"]
             masksT = (masksT > 0.5).squeeze(1).cpu().numpy()
             accumMaskT = masksT[0]*255
@@ -336,7 +343,8 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
             gtMaskArray = (255-accumMaskT).astype("uint8")
             gtMask = Image.fromarray(gtMaskArray, mode="L")
 
-            gtMask.save("./debug/TestIM"+str(count)+"GTmask.png")
+            # saving masks for debugging purposes
+            #gtMask.save("./debug/TestIM"+str(count)+"GTmask.png")
 
             try:
                 dScore.append(boxesFound(gtMaskArray,outMaskArray, percentage = False))
@@ -364,12 +372,106 @@ def predict_pytorch(dataset_test, model, device,predConfidence):
     torch.set_num_threads(n_threads)
 
     # computations
-    print(invScore)
-    print(dScore)
+    #print(invScore)
+    #print(dScore)
     prec, rec = precRecall(dScore, invScore)
     print("At the end of the test precision and recall values (in terms of centroids) where "+str(prec)+" and "+str(rec))
 
-    print(precList)
-    print(recList)
+    #print(precList)
+    #print(recList)
     print("average Precision (overlap) "+str(sum(precList) / len(precList)))
     print("average Recall (overlap) "+str(sum(recList) / len(recList)))
+
+    return prec,rec,sum(precList) / len(precList), sum(recList) / len(recList)
+
+@torch.no_grad()
+def predict_pytorch_fasterRCNN(dataset_test, model, device, predConfidence):
+    print("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUuOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+
+    """
+        Inference for pytorch object detectors
+        faster rcnn
+    """
+    data_loader = torch.utils.data.DataLoader(
+        dataset_test,
+        batch_size=1,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
+    print("Testing Dataset Length "+str(len(dataset_test)))
+
+    # evaluate on the test dataset
+    n_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    cpu_device = torch.device("cpu")
+    model.eval()
+
+    print("evaluating "+str(len(data_loader)))
+
+    count=0
+    precList = []
+    recList = []
+    dScore = []
+    invScore = []
+    ignoreCount = 0
+
+    for images, targets in data_loader:
+        # store test images to disk
+        images = list(img.to(device) for img in images)
+
+        torch.cuda.synchronize()
+        model_time = time.time()
+        outputs = model(images)
+
+        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+
+        # Move outputs to CPU and filter based on confidence score
+        filtered_outputs = []
+        for output in outputs:
+            # Filter masks where confidence (score) is > 0.9
+            high_conf_indices = output['scores'] > predConfidence
+
+            # Keep only high-confidence masks, boxes, and labels
+            filtered_output = {
+                'boxes': output['boxes'][high_conf_indices].to(cpu_device),
+                'labels': output['labels'][high_conf_indices].to(cpu_device),
+                'scores': output['scores'][high_conf_indices].to(cpu_device),
+            }
+            filtered_outputs.append(filtered_output)
+
+        model_time = time.time() - model_time
+
+        evaluator_time = time.time()
+        if len(filtered_outputs)>=1 :
+
+            prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
+            dS, invS = boxListEvaluationCentroids(outputs[0]["boxes"],targets[0]["boxes"])
+
+        else:
+            prec,rec, dS, invS = 0,0,0,0
+
+        precList.append(prec)
+        recList.append(rec)
+        dScore.append(dS)
+        invScore.append(invS)
+
+        evaluator_time = time.time() - evaluator_time
+        #print("time "+str(evaluator_time))
+        count+=1
+
+
+    # accumulate predictions from all images
+    torch.set_num_threads(n_threads)
+
+    # computations
+    #print(invScore)
+    #print(dScore)
+    print("average Precision (centroids) "+str(sum(dScore) / len(dScore)))
+    print("average Recall (centroids) "+str(sum(invScore) / len(invScore)))
+
+    #print(precList)
+    #print(recList)
+    print("average Precision (overlap) "+str(sum(precList) / len(precList)))
+    print("average Recall (overlap) "+str(sum(recList) / len(recList)))
+
+    return sum(dScore) / len(dScore), sum(invScore) / len(invScore) ,sum(precList) / len(precList), sum(recList) / len(recList)

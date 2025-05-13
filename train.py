@@ -51,7 +51,7 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     mosVal = 1.0 if "mosaic" not in params else params["mosaic"]
 
     results = model.train(data=datasrc, epochs=epochs, imgsz=imgsize,
-                name=name,device=0, patience = 5, exist_ok = True,
+                name=name,device=0, patience = 10, exist_ok = True,
                 scale = scVal, mosaic = mosVal)
     results = model.val(project=resfolder,name=valfolder,save_json=True)
 
@@ -59,7 +59,7 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
         res.write(str(results))
 
 def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
-                        trainAgain = False, proportion = 0.9,
+                        trainAgain = False, proportion = 0.9, mType = "maskrcnn",
                         trainParams = {"score":0.5,"nms":0.3} ):
     ssd = False
 
@@ -75,13 +75,9 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
     print("Training Dataset Length "+str(len(dataset)))
 
     if trainAgain :
-        # get the model using our helper function
-        if ssd:
-            model = get_model_ssd(num_classes)
-        else:
-            model = get_model_instance_segmentation(num_classes)
-            model.roi_heads.score_thresh = trainParams["score"]  # Increase to filter out low-confidence boxes (default ~0.05)
-            model.roi_heads.nms_thresh = trainParams["nms"]   # Reduce to suppress more overlapping boxes (default ~0.5)
+        model = get_model_instance_segmentation(num_classes,mType = mType)
+        model.roi_heads.score_thresh = trainParams["score"]  # Increase to filter out low-confidence boxes (default ~0.05)
+        model.roi_heads.nms_thresh = trainParams["nms"]   # Reduce to suppress more overlapping boxes (default ~0.5)
 
         # move model to the right device
         model.to(device)
@@ -118,8 +114,8 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
             model.eval()
         else:
             model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights=None)  # No pretrained weights
-            #this shoudl probably be in get_model_instance_segmentation
-
+            # be careful with this if you want to re-use trained models
+            
             # Replace the box predictor with one matching the saved model's class count (2 classes, including background)
             num_classes = 2  # Adjust to match the number of classes in your saved model
             # get number of input features for the classifier
@@ -191,62 +187,46 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
 def collate_fn(batch):
     return tuple(zip(*batch))
 
-def get_model_instance_segmentation(num_classes):
+def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
     # load an instance segmentation model pre-trained on COCO
-    model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+    #model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
+    print("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+
+    if mType == "maskrcnn":
+        model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(weights="DEFAULT")
+
+        # get number of input features for the classifier
+        in_features = model.roi_heads.box_predictor.cls_score.in_features
+        # replace the pre-trained head with a new one (this is only to change the number of classes predicted)
+        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+        # now get the number of input features for the mask classifier
+        in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+        hidden_layer = 256
+        # and replace the mask predictor with a new one (this is only to change the number of classes predicted)
+        model.roi_heads.mask_predictor = MaskRCNNPredictor(
+            in_features_mask,
+            hidden_layer,
+            num_classes
+        )
+
+    elif mType == "fasterrcnn":
+        print("UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUuOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+
+        model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights="DEFAULT")
+
+        # get number of input features for the classifier
+        in_features = model.roi_heads.box_predictor.cls_score.in_features
+        # replace the pre-trained head with a new one (this is only to change the number of classes predicted)
+        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+    else: raise Exception(" get_model_instance_segmentation, unrecognized model type")
+
     # to change the model, see, for example
     # https://github.com/pytorch/tutorials/blob/d686b662932a380a58b7683425faa00c06bcf502/intermediate_source/torchvision_tutorial.rst
 
-    # get number of input features for the classifier
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    # replace the pre-trained head with a new one
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
-    # now get the number of input features for the mask classifier
-    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-    hidden_layer = 256
-    # and replace the mask predictor with a new one
-    model.roi_heads.mask_predictor = MaskRCNNPredictor(
-        in_features_mask,
-        hidden_layer,
-        num_classes
-    )
 
-    return model
-
-def get_model_ssd(num_classes):
-    # Load a pre-trained SSD model
-    model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(
-        weights=SSDLite320_MobileNet_V3_Large_Weights.COCO_V1
-    )
-
-  # Extract the classification head
-    old_classification_head = model.head.classification_head
-
-   # Access the existing classification head (part of the model's head)
-    old_classification_head = model.head.classification_head
-
-    # The classification head has a linear layer at the end for class predictions.
-    # Modify it to account for the new number of classes
-    old_in_channels = old_classification_head.cls_logits.in_channels  # Get the input channels for the first layer
-
-    # Create a new classification head with the updated number of classes
-    new_classification_head = SSDLiteClassificationHead(
-        in_channels=old_in_channels,
-        num_anchors=old_classification_head.num_anchors,  # Keep the number of anchors the same
-        num_classes=num_classes  # Set the number of classes to the custom value
-    )
-
-    # Replace the old classification head with the new one
-    model.head.classification_head = new_classification_head
-
-    return model
-
-def load_model_ssd(filepath, num_classes):
-    model = get_model_ssd(num_classes)
-    model.load_state_dict(torch.load(filepath))
-    model.eval()  # Set the model to evaluation mode
-    print(f"Model loaded from {filepath}")
     return model
 
 def get_transform():
