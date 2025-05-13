@@ -228,6 +228,7 @@ def predict_yolo(conf):
     print(dScore)
     prec, rec = precRecall(dScore, invScore)
     print("At the end of the test precision and recall values where "+str(prec)+" and "+str(rec))
+    return prec,rec
 
 @torch.no_grad()
 def predict_pytorch(dataset_test, model, device,predConfidence):

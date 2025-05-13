@@ -17,6 +17,7 @@ from imageUtils import boxesFound,read_Binary_Mask,recoupMasks,color_to_gray
 from train import train_YOLO,makeTrainYAML
 
 from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2
+from predict import predict_yolo, predict_pytorch
 
 def makeParamDicts(pars,vals):
     """
@@ -31,14 +32,14 @@ def makeParamDicts(pars,vals):
     res = [dict(zip(pars,tup)) for tup in prod]
     return res
 
-def paramsDictToString(aDict):
+def paramsDictToString(aDict, sep = ""):
     """
     Function to create a string from a params dict
     """
     ret = ""
     for k,v in aDict.items():
-        ret+=str(k)+str(v)
-    return ret
+        ret+=str(k)+sep+str(v)+sep
+    return ret[:-1]
 
 def computeAndCombineMasks(file):
     """
@@ -198,6 +199,7 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
         # careful, this contains a hardcoded resampling factor!
         buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"])
 
+    f = open("outfile.txt","w+")
     if conf["Train"]:
         print("train YOLO ")
         # start YOLO experiment
@@ -205,10 +207,16 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
         yoloParams = makeParamDicts(["scale", "mosaic"],
                                     [[0.2,0.5,0.9],[0.0,0.5]])
         for params in yoloParams:
+            # Train this version of the YOLO NETWORK
             yamlTrainFile = "trainEXP.yaml"
             prefix = "exp"+paramsDictToString(params)
             makeTrainYAML(conf,yamlTrainFile,params)
             train_YOLO(conf, yamlTrainFile, prefix)
+
+            # Test this version of the YOLO Network
+            print("TESTING YOLO!!!!!!!!!!!!!!!!!")
+            prec,rec = predict_yolo(conf)
+            f.write(str(paramsDictToString(params,sep=",")))
 
         sys.exit()
         print("train FRCNN")
@@ -240,6 +248,7 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
             num_epochs = conf["ep"], trainAgain=conf["again"],
             proportion = proportion, trainParams = tParams)
 
+    f.close()
 
 
 if __name__ == "__main__":
