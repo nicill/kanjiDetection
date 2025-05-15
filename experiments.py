@@ -264,7 +264,7 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
     print("Experiments, train dataset length "+str(len(dataset) ))
 
     frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
-                                [["maskrcnn","fcos","retinanet","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doFRCNN else []
+                                [["fcos","retinanet","maskrcnn","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doFRCNN else []
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
     # predconf prediction confidence in testing
@@ -298,7 +298,6 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
         f.flush()
 
     # there should be another loop for retina fcos
-
 
     f.close()
 

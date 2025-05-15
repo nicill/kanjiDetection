@@ -348,8 +348,8 @@ def boxListEvaluation(bPred, bGT,th = 50):
 
     #print(tpDict)
     #print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
-    recall = num_tp/len(bGT)
-    precision = num_tp/len(bPred)
+    recall = num_tp/len(bGT) if len(bGT) > 0 else 0
+    precision = num_tp/len(bPred) if len(bPred) > 0 else 0
 
     return precision,recall
 
@@ -394,8 +394,8 @@ def boxListEvaluationCentroids(bPred, bGT):
 
     #print(tpDict)
     #print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
-    recall = num_tp/len(bGT)
-    precision = num_tp/len(bPred)
+    recall = num_tp/len(bGT) if len(bGT) > 0 else 0
+    precision = num_tp/len(bPred) if len(bPred) > 0 else 0
 
     return precision,recall
 

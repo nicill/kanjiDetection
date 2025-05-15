@@ -85,6 +85,9 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
         if mType in ["maskrcnn","fasterrcnn"]:
             model.roi_heads.score_thresh = trainParams["score"]  # Increase to filter out low-confidence boxes (default ~0.05)
             model.roi_heads.nms_thresh = trainParams["nms"]   # Reduce to suppress more overlapping boxes (default ~0.5)
+        elif mType in ["retinanet","fcos"]:
+            model.score_thresh = trainParams["score"]
+            model.nms_thresh = trainParams["nms"]
 
         # move model to the right device
         model.to(device)
@@ -115,6 +118,7 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
         # Save the model's state_dict (recommended for saving models)
         torch.save(model.state_dict(), file_path)
     else:
+        # TODO: This needs to be properly redone!!!!!
         if ssd:
             model = load_model_ssd(filepath,num_classes)
             model.to(device)
