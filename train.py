@@ -11,6 +11,12 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from torchvision.transforms import v2 as T
 
+from functools import partial
+from torchvision.models.detection import RetinaNet_ResNet50_FPN_V2_Weights
+from torchvision.models.detection.retinanet import RetinaNetClassificationHead
+
+from torchvision.models.detection.fcos import FCOSClassificationHead
+
 from utils import MetricLogger,SmoothedValue,warmup_lr_scheduler,reduce_dict
 import math
 import cv2
@@ -76,8 +82,9 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
 
     if trainAgain :
         model = get_model_instance_segmentation(num_classes,mType = mType)
-        model.roi_heads.score_thresh = trainParams["score"]  # Increase to filter out low-confidence boxes (default ~0.05)
-        model.roi_heads.nms_thresh = trainParams["nms"]   # Reduce to suppress more overlapping boxes (default ~0.5)
+        if mType in ["maskrcnn","fasterrcnn"]:
+            model.roi_heads.score_thresh = trainParams["score"]  # Increase to filter out low-confidence boxes (default ~0.05)
+            model.roi_heads.nms_thresh = trainParams["nms"]   # Reduce to suppress more overlapping boxes (default ~0.5)
 
         # move model to the right device
         model.to(device)
@@ -115,7 +122,7 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
         else:
             model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights=None)  # No pretrained weights
             # be careful with this if you want to re-use trained models
-            
+
             # Replace the box predictor with one matching the saved model's class count (2 classes, including background)
             num_classes = 2  # Adjust to match the number of classes in your saved model
             # get number of input features for the classifier
@@ -190,8 +197,6 @@ def collate_fn(batch):
 def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
     # load an instance segmentation model pre-trained on COCO
     #model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights="DEFAULT")
-    print("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
-
     if mType == "maskrcnn":
         model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(weights="DEFAULT")
 
@@ -211,15 +216,42 @@ def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
         )
 
     elif mType == "fasterrcnn":
-        print("UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUuOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
-
         model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights="DEFAULT")
 
         # get number of input features for the classifier
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         # replace the pre-trained head with a new one (this is only to change the number of classes predicted)
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+    elif mType == "retinanet":
+        print("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+        model = torchvision.models.detection.retinanet_resnet50_fpn_v2(
+            weights=RetinaNet_ResNet50_FPN_V2_Weights.COCO_V1
 
+
+        )
+        num_anchors = model.head.classification_head.num_anchors
+        model.head.classification_head = RetinaNetClassificationHead(
+            in_channels=256,
+            num_anchors=num_anchors,
+            num_classes=num_classes,
+            norm_layer=partial(torch.nn.GroupNorm, 32)
+        )
+    elif mType == "fcos":
+        model = torchvision.models.detection.fcos_resnet50_fpn(
+        weights='DEFAULT')
+        num_anchors = model.head.classification_head.num_anchors
+        model.head.classification_head = FCOSClassificationHead(
+            in_channels=256,
+            num_anchors=num_anchors,
+            num_classes=num_classes,
+            norm_layer=partial(torch.nn.GroupNorm, 32)
+        )
+        min_size=640
+        max_size=640
+        model.transform.min_size = (min_size, )
+        model.transform.max_size = max_size
+        for param in model.parameters():
+            param.requires_grad = True
     else: raise Exception(" get_model_instance_segmentation, unrecognized model type")
 
     # to change the model, see, for example

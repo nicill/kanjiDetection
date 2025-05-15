@@ -7,6 +7,7 @@
 import configparser
 import sys
 import os
+import time
 import cv2
 import torch
 
@@ -192,6 +193,8 @@ def classicalDescriptorExperiment(fName):
 def DLExperiment(conf, doYolo = False, doFRCNN = False):
     """
         Experiment to compare different values of DL networks
+        TODO: Check that time measurement works
+        params for retinanet, fcos
     """
     # use the GPU or the CPU, if a GPU is not available
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -213,26 +216,33 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
     # Yolo Params is a list of dictionaries with all possible parameters
     yoloParams = makeParamDicts(["scale", "mosaic"],
                                 [[0.5,0.9],[0.0,1.0]]) if doYolo else []
-    # Print first line of results file    
+    # Print first line of results file
     if yoloParams != []:
         for k in yoloParams[0].keys():
             f.write(str(k)+",")
-        f.write("PRECISION"+","+"RECALL"+"\n")
+        f.write("PRECISION"+","+"RECALL"+"TrainT"+"TestT"+"\n")
 
     for params in yoloParams:
         # Train this version of the YOLO NETWORK
         yamlTrainFile = "trainEXP.yaml"
         prefix = "exp"+paramsDictToString(params)
         makeTrainYAML(conf,yamlTrainFile,params)
+
+        start = time.time()
         if conf["Train"]:
             train_YOLO(conf, yamlTrainFile, prefix)
+        end = time.time()
+        trainTime = end - start
 
         # Test this version of the YOLO Network
         print("TESTING YOLO!!!!!!!!!!!!!!!!!")
+        start = time.time()
         prec,rec = predict_yolo(conf,prefix+"epochs"+str(conf["ep"])+'ex' )
+        end = time.time()
+        testTime = end - start
         for k,v in params.items():
             f.write(str(v)+",")
-        f.write(str(prec)+","+str(rec)+"\n")
+        f.write(str(prec)+","+str(rec)+","+str(trainTime)+","+str(testTime)+"\n")
         f.flush()
 
     f.close()
@@ -240,17 +250,21 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
     doFRCNN = True
     print("train FRCNN? "+str(doFRCNN))
     f = open(conf["outTEXT"][:-4]+"FRCNN"+conf["outTEXT"][-4:],"w+")
-    
+
     # our dataset has two classes only - background and Kanji
     num_classes = 2
     bs = 64 # should probably be a parameter
     proportion = conf["Train_Perc"]/100
 
-    dataset = ODDataset(os.path.join(conf["torchData"],"train"), True, conf["slice"], get_transform())
-    dataset_test = ODDataset(os.path.join(conf["torchData"],"test"), True, conf["slice"], get_transform())
+    #dataset = ODDataset(os.path.join(conf["torchData"],"train"), True, conf["slice"], get_transform())
+    #dataset_test = ODDataset(os.path.join(conf["torchData"],"test"), True, conf["slice"], get_transform())
+    dataset = ODDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
+    dataset_test = ODDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform())
+
+    print("Experiments, train dataset length "+str(len(dataset) ))
 
     frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
-                                [["maskrcnn","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doFRCNN else []
+                                [["maskrcnn","fcos","retinanet","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doFRCNN else []
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
     # predconf prediction confidence in testing
@@ -258,24 +272,33 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
     if frcnnParams != []:
         for k in frcnnParams[0].keys():
             f.write(str(k)+",")
-        f.write("PRECC"+","+"RECC"+","+"PRECO"+","+"reco"+"\n")
+        f.write("PRECC"+","+"RECC"+","+"PRECO"+","+"reco"+"TrainT"+"TestT"+"\n")
 
-
+    # this should be for faster rcnn mask rcnn
     for tParams in frcnnParams:
         filePath = "exp"+paramsDictToString(tParams)+"fasterrcnn_resnet50_fpn.pth"
         #tParams = {"score":conf["pScoreTH"],"nms":conf["pnmsTH"]}
         # there is a proportion parameter that we may or may not want to touch
+        start = time.time()
         if conf["Train"]:
             pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
                                         num_epochs = conf["ep"], trainAgain=conf["again"], proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
+        end = time.time()
+        trainTime = end - start
 
         predConf = tParams["predconf"]
-        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, mType = tParams["modelType"])
+        start = time.time()
+        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf)
+        end = time.time()
+        testTime = end - start
 
         for k,v in tParams.items():
             f.write(str(v)+",")
-        f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+"\n")
+        f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+","+str(trainTime)+","+str(testTime)+"\n")
         f.flush()
+
+    # there should be another loop for retina fcos
+
 
     f.close()
 

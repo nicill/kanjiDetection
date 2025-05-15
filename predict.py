@@ -232,19 +232,14 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     print("At the end of the test precision and recall values where "+str(prec)+" and "+str(rec))
     return prec,rec
 
-@torch.no_grad()
-def predict_pytorch(dataset_test, model, device, predConfidence,  mType = "maskrcnn"):
-    if mType == "maskrcnn":
-        return predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence)
-    elif mType == "fasterrcnn":
-        return predict_pytorch_fasterRCNN(dataset_test, model, device, predConfidence)
-    else: raise Exception("predict pytorch, unrecognized model type")
-
 
 @torch.no_grad()
 def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
     """
         Inference for pytorch object detectors
+        Currently not in use in favor of a simpler function
+        This one accesses the masks in case we want to do real
+        mask prediction and not only boxes
     """
     data_loader = torch.utils.data.DataLoader(
         dataset_test,
@@ -385,7 +380,7 @@ def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
     return prec,rec,sum(precList) / len(precList), sum(recList) / len(recList)
 
 @torch.no_grad()
-def predict_pytorch_fasterRCNN(dataset_test, model, device, predConfidence):
+def predict_pytorch(dataset_test, model, device, predConfidence):
     print("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUuOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
 
     """
