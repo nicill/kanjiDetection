@@ -2,7 +2,7 @@
 File to build training and Validation datasets
 For Kanji Detection using deep learning
 """
-from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask,strictBinarization,sliceAndBox,boxCoordsToFile,boxesFromMask
+from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask,strictBinarization,sliceAndBox,boxCoordsToFile,boxesFromMask,color_to_gray
 import os
 import cv2
 import sys
@@ -220,6 +220,7 @@ def buildTestingFromSingleFolderSakuma2(inFolder, outTest,  slice, denoised = Tr
                     cv2.imwrite(os.path.join(outDir,"images",newFileName+".png"),i)
                     cv2.imwrite(os.path.join(outDir,"masks",newFileName+"MASK.png"),m)
                     boxCoordsToFile(os.path.join(outDir,"labels",newFileName+".txt"),l)
+
 
 
 def separateTrainTest(inFolder, outFolder, proportion = 0.9):

@@ -271,17 +271,12 @@ def boxesFound(im1, im2, percentage = True, verbose = False):
     else:
         return (count,totalBoxes)
 
-def boxListEvaluation(bPred, bGT,th = 50):
+def boxListEvaluation(bPred, bGT,th = 0.5):
     """
         receives two lists of boxes (predicted and ground truth)
         in x1,y1,x2,y2 format and outputs precision, recall,
         in terms of overlap percentage
     """
-    def center(b):
-        """
-            returns the center of a box in x1,y1,x2,y2 format
-        """
-        return b[0]+(b[2]-b[0])/2,b[1]+(b[3]-b[1])/2
     def isTrueP(b,gtB):
         """
             goes over all boxes in the ground truth and checks
@@ -289,67 +284,62 @@ def boxListEvaluation(bPred, bGT,th = 50):
             store them in a dictionary 
         """
         for boxGT in gtB:
-            op = overlappingAreaPercentage(b,boxGT)
+            op = iou(b,boxGT)
             #print("overlap percentage "+str(op))
-            if op>th and str(boxGT) not in tpDict:
-                    tpDict[str(boxGT)] = True
+            if op>th and str(b) not in tpDict:
+                tpDict[str(b)] = True
                 
 
-    def overlappingAreaPercentage(b1, b2):
+    def iou(b1, b2):
         """
-        Compute the percentage of overlap of rect1 over rect2.
-
-        Parameters:
-            rect1: tuple (xmin, ymin, xmax, ymax) - First rectangle
-            rect2: tuple (xmin, ymin, xmax, ymax) - Second rectangle
-
-        Returns:
-            float: Percentage of overlap (0-100) of rect1 over rect2.
+        Compute IoU between two boxes.
+        
+        b1: list or tuple [x1_min, y1_min, x1_max, y1_max]
+        b2: list or tuple [x2_min, y2_min, x2_max, y2_max]
         """
-        # Extract coordinates
         x1_min, y1_min, x1_max, y1_max = b1
         x2_min, y2_min, x2_max, y2_max = b2
 
-        # Compute the intersection rectangle
-        inter_xmin = max(x1_min, x2_min)
-        inter_ymin = max(y1_min, y2_min)
-        inter_xmax = min(x1_max, x2_max)
-        inter_ymax = min(y1_max, y2_max)
+        # Compute intersection coordinates
+        xi1 = max(x1_min, x2_min)
+        yi1 = max(y1_min, y2_min)
+        xi2 = min(x1_max, x2_max)
+        yi2 = min(y1_max, y2_max)
 
-        # Compute width and height of the intersection rectangle
-        inter_width = max(0, inter_xmax - inter_xmin)
-        inter_height = max(0, inter_ymax - inter_ymin)
-
-        # Compute the area of intersection
+        # Compute intersection area
+        inter_width = max(0, xi2 - xi1)
+        inter_height = max(0, yi2 - yi1)
         inter_area = inter_width * inter_height
 
-        # Compute the area of the second rectangle (rect2)
-        rect2_area = max(0, x2_max - x2_min) * max(0, y2_max - y2_min)
+        # Compute union area
+        b1_area = (x1_max - x1_min) * (y1_max - y1_min)
+        b2_area = (x2_max - x2_min) * (y2_max - y2_min)
+        union_area = b1_area + b2_area - inter_area
 
         # Avoid division by zero
-        if rect2_area == 0:
+        if union_area == 0:
             return 0.0
 
-        # Calculate the overlap percentage
-        overlap_percentage = (inter_area / rect2_area) * 100
-
-        return overlap_percentage
-
+        return inter_area / union_area
 
     # Dictionary that contains the boxes in the ground truth that have been overlapped by a predicted box
     tpDict = {}
     #num_tp = 0
     for box in bPred:
-        # decide if it is a TP or FP.
-        #isTP = isTrueP(box,bGT)
-        #if isTP: num_tp+=1
-        isTrueP(box,bGT)
+        isTrueP(box,bGT) # this function already updates the tpDict
     num_tp = len(tpDict.keys())    
+
+    tpDict = {}
+    for box in bGT:
+        isTrueP(box,bPred) # this function already updates the tpDict
+    num_tpRECALL = len(tpDict.keys())    
+
 
     #print(tpDict)
     #print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
-    recall = num_tp/len(bGT) if len(bGT) > 0 else 0
+    recall = num_tpRECALL/len(bGT) if len(bGT) > 0 else 0
     precision = num_tp/len(bPred) if len(bPred) > 0 else 0
+    #print("returning "+str(precision)+" "+str(recall))
 
     return precision,recall
 

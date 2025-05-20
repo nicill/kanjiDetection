@@ -22,8 +22,8 @@ import math
 import cv2
 import numpy as np
 
-from torchvision.models.detection.ssdlite import SSDLite320_MobileNet_V3_Large_Weights
-from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
+#from torchvision.models.detection.ssdlite import SSDLite320_MobileNet_V3_Large_Weights
+#from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
 
 torch.backends.cudnn.benchmark = True
 
@@ -67,7 +67,6 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
 def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
                         trainAgain = False, proportion = 0.9, mType = "maskrcnn",
                         trainParams = {"score":0.5,"nms":0.3} ):
-    ssd = False
 
     # split the dataset in train and test set
     data_loader = torch.utils.data.DataLoader(
@@ -117,18 +116,12 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
 
         # Save the model's state_dict (recommended for saving models)
         torch.save(model.state_dict(), file_path)
-    else:
-        # TODO: This needs to be properly redone!!!!!
-        if ssd:
-            model = load_model_ssd(filepath,num_classes)
-            model.to(device)
-            model.eval()
-        else:
-            model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights=None)  # No pretrained weights
-            # be careful with this if you want to re-use trained models
+    else:# loading pretrained model
+        print("not training again")
+        if mType == "maskrcnn":
+            model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(weights="DEFAULT")
 
             # Replace the box predictor with one matching the saved model's class count (2 classes, including background)
-            num_classes = 2  # Adjust to match the number of classes in your saved model
             # get number of input features for the classifier
             in_features = model.roi_heads.box_predictor.cls_score.in_features
             # replace the pre-trained head with a new one
@@ -143,11 +136,50 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
                 num_classes
             )
 
-            model.to(device)
+        elif mType == "fasterrcnn":
+            model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights="DEFAULT")
 
-            # Load the saved state_dict into the model
-            model.load_state_dict(torch.load(file_path))
-            model.eval()  # Set the model to evaluation mode
+            # get number of input features for the classifier
+            in_features = model.roi_heads.box_predictor.cls_score.in_features
+            # replace the pre-trained head with a new one (this is only to change the number of classes predicted)
+            model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+        elif mType == "retinanet":
+            model = torchvision.models.detection.retinanet_resnet50_fpn_v2(
+                weights=RetinaNet_ResNet50_FPN_V2_Weights.COCO_V1
+
+
+            )
+            num_anchors = model.head.classification_head.num_anchors
+            model.head.classification_head = RetinaNetClassificationHead(
+                in_channels=256,
+                num_anchors=num_anchors,
+                num_classes=num_classes,
+                norm_layer=partial(torch.nn.GroupNorm, 32)
+            )
+        elif mType == "fcos":
+            model = torchvision.models.detection.fcos_resnet50_fpn(
+            weights='DEFAULT')
+            num_anchors = model.head.classification_head.num_anchors
+            model.head.classification_head = FCOSClassificationHead(
+                in_channels=256,
+                num_anchors=num_anchors,
+                num_classes=num_classes,
+                norm_layer=partial(torch.nn.GroupNorm, 32)
+            )
+            min_size=640
+            max_size=640
+            model.transform.min_size = (min_size, )
+            model.transform.max_size = max_size
+            for param in model.parameters():
+                param.requires_grad = True
+        else: raise Exception(" train_pytorchModel, unrecognized model type")
+
+        #reload the model
+        model.to(device)
+
+        # Load the saved state_dict into the model
+        model.load_state_dict(torch.load(file_path))
+        model.eval()  # Set the model to evaluation mode
     return model
     print("finished training")
 

@@ -22,7 +22,7 @@ from imageUtils import boxesFound,read_Binary_Mask,recoupMasks,color_to_gray
 from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel
 
 from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2
-from predict import predict_yolo, predict_pytorch
+from predict import predict_yolo, predict_pytorch, predict_pytorch_maskRCNN
 
 def makeParamDicts(pars,vals):
     """
@@ -190,7 +190,7 @@ def classicalDescriptorExperiment(fName):
     fInvMSER.close()
 
 
-def DLExperiment(conf, doYolo = False, doFRCNN = False):
+def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     """
         Experiment to compare different values of DL networks
     """
@@ -205,11 +205,10 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
 
         # Now test comes from another source
         # careful, this contains a hardcoded resampling factor!
-        buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"])
+        buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"],denoised= True)
 
     f = open(conf["outTEXT"][:-4]+"YOLO"+conf["outTEXT"][-4:],"w+")
-    doYolo = False
-    print("train YOLO? "+str(doYolo))
+    print("consider YOLO? "+str(doYolo))
     # start YOLO experiment
     # Yolo Params is a list of dictionaries with all possible parameters
     yoloParams = makeParamDicts(["scale", "mosaic"],
@@ -245,8 +244,8 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
 
     f.close()
 
-    doFRCNN = True
-    print("train FRCNN? "+str(doFRCNN))
+    doPytorchModels = True
+    print("consider pytorch models? "+str(doPytorchModels))
     f = open(conf["outTEXT"][:-4]+"FRCNN"+conf["outTEXT"][-4:],"w+")
 
     # our dataset has two classes only - background and Kanji
@@ -262,7 +261,7 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
     print("Experiments, train dataset length "+str(len(dataset) ))
 
     frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
-                                [["fcos","retinanet","fasterrcnn","maskrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doFRCNN else []
+                                [["maskrcnn","fcos","retinanet","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doPytorchModels else []
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
     # predconf prediction confidence in testing
@@ -270,25 +269,29 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
     if frcnnParams != []:
         for k in frcnnParams[0].keys():
             f.write(str(k)+",")
-        f.write("PRECC"+","+"RECC"+","+"PRECO"+","+"reco"+"TrainT"+"TestT"+"\n")
+        f.write("PRECC"+","+"RECC"+","+"PRECO"+","+"reco"+","+"TrainT"+","+"TestT"+"\n")
 
     # this should be for faster rcnn mask rcnn
     for tParams in frcnnParams:
         filePath = "exp"+paramsDictToString(tParams)+"fasterrcnn_resnet50_fpn.pth"
-        #tParams = {"score":conf["pScoreTH"],"nms":conf["pnmsTH"]}
-        # there is a proportion parameter that we may or may not want to touch
+
+        my_file = Path("/path/to/file")
+        trainAgain = not Path(filePath).is_file()
         start = time.time()
         if conf["Train"]:
             pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
-                                        num_epochs = conf["ep"], trainAgain=conf["again"], proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
+                                        num_epochs = conf["ep"], trainAgain=trainAgain, proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
         end = time.time()
         trainTime = end - start
 
         predConf = tParams["predconf"]
         start = time.time()
         prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf)
+        #prec,rec, oprec, orec = predict_pytorch_maskRCNN(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf) #debugging purposes
         end = time.time()
         testTime = end - start
+
+
 
         for k,v in tParams.items():
             f.write(str(v)+",")
@@ -316,4 +319,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf)
+    DLExperiment(conf,doYolo=False,doPytorchModels=True)

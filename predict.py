@@ -326,7 +326,7 @@ def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
             outMaskArray = (255-accumMask).astype("uint8")
             outMask = Image.fromarray(outMaskArray, mode="L")
 
-            #outMask.save("./debug/TestIM"+str(count)+"mask.png")
+            outMask.save("./debug/TestIM"+str(count)+"mask.png")
 
             prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
             # create an output mask here and evaluate with boxesFound like for Pytorch
@@ -339,7 +339,7 @@ def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
             gtMask = Image.fromarray(gtMaskArray, mode="L")
 
             # saving masks for debugging purposes
-            #gtMask.save("./debug/TestIM"+str(count)+"GTmask.png")
+            gtMask.save("./debug/TestIM"+str(count)+"GTmask.png")
 
             try:
                 dScore.append(boxesFound(gtMaskArray,outMaskArray, percentage = False))
@@ -381,11 +381,8 @@ def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
 
 @torch.no_grad()
 def predict_pytorch(dataset_test, model, device, predConfidence):
-    print("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUuOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
-
     """
         Inference for pytorch object detectors
-        faster rcnn
     """
     data_loader = torch.utils.data.DataLoader(
         dataset_test,
@@ -394,6 +391,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence):
         collate_fn=collate_fn
     )
     print("Testing Dataset Length "+str(len(dataset_test)))
+    print("testing dataset image dict "+str(dataset_test.slicesToImages))
 
     # evaluate on the test dataset
     n_threads = torch.get_num_threads()
@@ -434,6 +432,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence):
             }
             filtered_outputs.append(filtered_output)
 
+
         model_time = time.time() - model_time
 
         evaluator_time = time.time()
@@ -468,5 +467,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence):
     #print(recList)
     print("average Precision (overlap) "+str(sum(precList) / len(precList)))
     print("average Recall (overlap) "+str(sum(recList) / len(recList)))
+
+    if sum(precList) / len(precList) >1: raise Exception("what is this shit?")
 
     return sum(dScore) / len(dScore), sum(invScore) / len(invScore) ,sum(precList) / len(precList), sum(recList) / len(recList)
