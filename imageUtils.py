@@ -400,7 +400,6 @@ def boxListEvaluationCentroids(bPred, bGT):
     return precision,recall
 
 
-
 def boxesFromMask(img, cl = 0, yoloFormat = True):
     """
     Return a list of box coordinates

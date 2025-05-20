@@ -193,8 +193,6 @@ def classicalDescriptorExperiment(fName):
 def DLExperiment(conf, doYolo = False, doFRCNN = False):
     """
         Experiment to compare different values of DL networks
-        TODO: Check that time measurement works
-        params for retinanet, fcos
     """
     # use the GPU or the CPU, if a GPU is not available
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -264,7 +262,7 @@ def DLExperiment(conf, doYolo = False, doFRCNN = False):
     print("Experiments, train dataset length "+str(len(dataset) ))
 
     frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
-                                [["fcos","retinanet","maskrcnn","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doFRCNN else []
+                                [["fcos","retinanet","fasterrcnn","maskrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doFRCNN else []
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
     # predconf prediction confidence in testing
