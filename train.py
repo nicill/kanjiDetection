@@ -11,6 +11,10 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from torchvision.transforms import v2 as T
 
+from torchvision.models.detection.ssd import SSDClassificationHead
+from torchvision.models.detection import _utils
+from torchvision.models.detection import SSD300_VGG16_Weights
+
 from functools import partial
 from torchvision.models.detection import RetinaNet_ResNet50_FPN_V2_Weights
 from torchvision.models.detection.retinanet import RetinaNetClassificationHead
@@ -21,9 +25,6 @@ from utils import MetricLogger,SmoothedValue,warmup_lr_scheduler,reduce_dict
 import math
 import cv2
 import numpy as np
-
-#from torchvision.models.detection.ssdlite import SSDLite320_MobileNet_V3_Large_Weights
-#from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
 
 torch.backends.cudnn.benchmark = True
 
@@ -84,7 +85,7 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
         if mType in ["maskrcnn","fasterrcnn"]:
             model.roi_heads.score_thresh = trainParams["score"]  # Increase to filter out low-confidence boxes (default ~0.05)
             model.roi_heads.nms_thresh = trainParams["nms"]   # Reduce to suppress more overlapping boxes (default ~0.5)
-        elif mType in ["retinanet","fcos"]:
+        elif mType in ["retinanet","fcos","ssd"]:
             model.score_thresh = trainParams["score"]
             model.nms_thresh = trainParams["nms"]
 
@@ -172,6 +173,25 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
             model.transform.max_size = max_size
             for param in model.parameters():
                 param.requires_grad = True
+        elif mType == "ssd":
+            size = 300
+            # Load the Torchvision pretrained model.
+            model = torchvision.models.detection.ssd300_vgg16(
+                weights=SSD300_VGG16_Weights.COCO_V1
+            )
+            # Retrieve the list of input channels.
+            in_channels = _utils.retrieve_out_channels(model.backbone, (size, size))
+            # List containing number of anchors based on aspect ratios.
+            num_anchors = model.anchor_generator.num_anchors_per_location()
+            # The classification head.
+            model.head.classification_head = SSDClassificationHead(
+                in_channels=in_channels,
+                num_anchors=num_anchors,
+                num_classes=num_classes,
+            )
+            # Image size for transforms.
+            model.transform.min_size = (size,)
+            model.transform.max_size = size
         else: raise Exception(" train_pytorchModel, unrecognized model type")
 
         #reload the model
@@ -259,12 +279,8 @@ def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
         # replace the pre-trained head with a new one (this is only to change the number of classes predicted)
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
     elif mType == "retinanet":
-        print("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
         model = torchvision.models.detection.retinanet_resnet50_fpn_v2(
-            weights=RetinaNet_ResNet50_FPN_V2_Weights.COCO_V1
-
-
-        )
+            weights=RetinaNet_ResNet50_FPN_V2_Weights.COCO_V1)
         num_anchors = model.head.classification_head.num_anchors
         model.head.classification_head = RetinaNetClassificationHead(
             in_channels=256,
@@ -288,6 +304,25 @@ def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
         model.transform.max_size = max_size
         for param in model.parameters():
             param.requires_grad = True
+    elif mType == "ssd":
+        size = 300
+        # Load the Torchvision pretrained model.
+        model = torchvision.models.detection.ssd300_vgg16(
+            weights=SSD300_VGG16_Weights.COCO_V1
+        )
+        # Retrieve the list of input channels.
+        in_channels = _utils.retrieve_out_channels(model.backbone, (size, size))
+        # List containing number of anchors based on aspect ratios.
+        num_anchors = model.anchor_generator.num_anchors_per_location()
+        # The classification head.
+        model.head.classification_head = SSDClassificationHead(
+            in_channels=in_channels,
+            num_anchors=num_anchors,
+            num_classes=num_classes,
+        )
+        # Image size for transforms.
+        model.transform.min_size = (size,)
+        model.transform.max_size = size
     else: raise Exception(" get_model_instance_segmentation, unrecognized model type")
 
     # to change the model, see, for example

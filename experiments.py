@@ -261,7 +261,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     print("Experiments, train dataset length "+str(len(dataset) ))
 
     frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
-                                [["maskrcnn","fcos","retinanet","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doPytorchModels else []
+                                [["ssd","maskrcnn","fcos","retinanet","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doPytorchModels else []
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
     # predconf prediction confidence in testing
@@ -290,8 +290,6 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
         #prec,rec, oprec, orec = predict_pytorch_maskRCNN(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf) #debugging purposes
         end = time.time()
         testTime = end - start
-
-
 
         for k,v in tParams.items():
             f.write(str(v)+",")
