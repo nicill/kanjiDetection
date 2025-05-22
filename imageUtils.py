@@ -438,6 +438,7 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
     # Prepare black canvas
     stitched_image = np.zeros((full_height, full_width, 3), dtype=np.uint8)
     stitched_mask = np.ones((full_height, full_width), dtype=np.uint8)
+    stitched_mask = stitched_mask*255
 
 
     for fname in TileList:
@@ -455,8 +456,13 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
 
         h, w = tile.shape[:2]
         stitched_image[y:y+h, x:x+w] = tile
-        stitched_mask[y:y+h, x:x+w] = tileMask 
 
+        # make sure to overlap all mask predictions
+        stitched_maskAUX = np.ones((full_height, full_width), dtype=np.uint8)
+        stitched_maskAUX[y:y+h, x:x+w] = tileMask 
+        stitched_mask[ stitched_maskAUX == 0 ] = 0  
+        #stitched_mask[y:y+h, x:x+w] = tileMask
+    
     # write to disk
     cv2.imwrite(os.path.join(predFolder,"FULL",imageN),stitched_image )
     cv2.imwrite(os.path.join(predFolder,"FULL","PREDMASK"+imageN),stitched_mask )
@@ -541,7 +547,7 @@ def sliceAndBox(im,mask,slice):
     """
     out = []
     wSize = (slice,slice)
-    for (x, y, window) in sliding_window(im, stepSize = slice, windowSize = wSize ):
+    for (x, y, window) in sliding_window(im, stepSize = int(slice*0.9), windowSize = wSize ):
         boxList = []
         # get mask window
         maskW = mask[y:y + wSize[1], x:x + wSize[0]]
