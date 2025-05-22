@@ -4,6 +4,7 @@ import sys
 from math import sqrt
 import os
 from pathlib import Path
+import re
 
 def resampleTestFolder(folder, factor, color = False):
     """
@@ -388,6 +389,103 @@ def boxListEvaluationCentroids(bPred, bGT):
     precision = num_tp/len(bPred) if len(bPred) > 0 else 0
 
     return precision,recall
+
+def rebuildImageFromTiles(imageN,TileList,predFolder):
+    """
+        Receive an imageName (image to build)
+        and a list of tiles (as file Names)
+        those tile names contain the first
+    """
+    def get_original_image_size(filenames, folder_path):
+        """
+        Computes the full size of the original image based on tile positions and dimensions using OpenCV.
+
+        Args:
+            filenames (list of str): List of filenames like 'x0y0.jpg', 'x200y150.png', etc.
+            folder_path (str): Path to the folder containing these image tiles.
+
+        Returns:
+            (width, height): Total width and height of the original image.
+        """
+        max_right = 0
+        max_bottom = 0
+
+        for fname in filenames:
+            # Extract x and y using regex
+            match = re.search(r'x(\d+)y(\d+)', fname)
+            if not match:
+                raise ValueError(f"Filename '{fname}' does not match 'x<num>y<num>' pattern.")
+            
+            x, y = int(match.group(1)), int(match.group(2))
+
+            # Read image using OpenCV
+            image_path = os.path.join(folder_path, fname)
+            img = cv2.imread(image_path)
+            if img is None:
+                raise FileNotFoundError(f"Could not read image: {image_path}")
+            
+            tile_height, tile_width = img.shape[:2]
+
+            # Compute max extent of the image
+            max_right = max(max_right, x + tile_width)
+            max_bottom = max(max_bottom, y + tile_height)
+
+        return max_right, max_bottom
+
+    # Get final image dimensions
+    full_width, full_height = get_original_image_size(TileList, predFolder)
+
+    # Prepare black canvas
+    stitched_image = np.zeros((full_height, full_width, 3), dtype=np.uint8)
+    stitched_mask = np.ones((full_height, full_width), dtype=np.uint8)
+
+
+    for fname in TileList:
+        match = re.search(r'x(\d+)y(\d+)', fname)
+        if not match:
+            raise ValueError(f"Filename '{fname}' does not contain valid 'x<num>y<num>' format.")
+
+        x, y = int(match.group(1)), int(match.group(2))
+        image_path = os.path.join(predFolder, fname)
+        tile = cv2.imread(image_path)
+        tileMask = cv2.imread(os.path.join(predFolder, "PREDMASK"+fname),0)
+
+        if tile is None:
+            raise FileNotFoundError(f"Could not read image: {image_path}")
+
+        h, w = tile.shape[:2]
+        stitched_image[y:y+h, x:x+w] = tile
+        stitched_mask[y:y+h, x:x+w] = tileMask 
+
+    # write to disk
+    cv2.imwrite(os.path.join(predFolder,"FULL",imageN),stitched_image )
+    cv2.imwrite(os.path.join(predFolder,"FULL","PREDMASK"+imageN),stitched_mask )
+
+
+def maskFromBoxes(boxes, image_size):
+    """
+    Create a binary mask from bounding boxes.
+
+    Args:
+        boxes (list of lists or tensors): List of [x1, y1, x2, y2] boxes.
+        image_size (tuple): (height, width) of the output mask.
+
+    Returns:
+        mask (np.ndarray): Binary mask with 1s inside boxes, 0 elsewhere.
+    """
+    height, width = image_size[0],image_size[1]
+    mask = np.zeros((height, width), dtype=np.uint8)
+
+    for box in boxes:
+        x1, y1, x2, y2 = map(int, box)
+        x1 = max(0, min(x1, width))
+        x2 = max(0, min(x2, width))
+        y1 = max(0, min(y1, height))
+        y2 = max(0, min(y2, height))
+        mask[y1:y2, x1:x2] = 255
+
+    return 255-mask
+
 
 
 def boxesFromMask(img, cl = 0, yoloFormat = True):

@@ -12,7 +12,7 @@ import numpy as np
 import os
 import torch
 from train import collate_fn
-from imageUtils import boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall
+from imageUtils import boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,rebuildImageFromTiles
 
 from torchvision.transforms.functional import to_pil_image
 
@@ -236,6 +236,7 @@ def predict_yolo(conf, prefix = 'combined_data_'):
 @torch.no_grad()
 def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
     """
+        CURRENTLY NOT IN USE AS WE ARE FOCUSING IN DETECTION
         Inference for pytorch object detectors
         Currently not in use in favor of a simpler function
         This one accesses the masks in case we want to do real
@@ -380,10 +381,11 @@ def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
     return prec,rec,sum(precList) / len(precList), sum(recList) / len(recList)
 
 @torch.no_grad()
-def predict_pytorch(dataset_test, model, device, predConfidence):
+def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
     """
         Inference for pytorch object detectors
     """
+
     data_loader = torch.utils.data.DataLoader(
         dataset_test,
         batch_size=1,
@@ -392,6 +394,9 @@ def predict_pytorch(dataset_test, model, device, predConfidence):
     )
     print("Testing Dataset Length "+str(len(dataset_test)))
     print("testing dataset image dict "+str(dataset_test.slicesToImages))
+
+    # create output folder if necessary
+    Path(os.path.join(predFolder,"FULL")).mkdir(parents=True, exist_ok=True)
 
     # evaluate on the test dataset
     n_threads = torch.get_num_threads()
@@ -408,7 +413,10 @@ def predict_pytorch(dataset_test, model, device, predConfidence):
     invScore = []
     ignoreCount = 0
 
-    for images, targets in data_loader:
+    for ind, (images, targets) in enumerate(data_loader):
+        imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
+        imToStore = np.ascontiguousarray(images[0].permute(1, 2, 0))
+       
         # store test images to disk
         images = list(img.to(device) for img in images)
 
@@ -438,20 +446,32 @@ def predict_pytorch(dataset_test, model, device, predConfidence):
         evaluator_time = time.time()
         if len(filtered_outputs)>=1 :
 
-            prec,rec = boxListEvaluation(outputs[0]["boxes"],targets[0]["boxes"])
-            dS, invS = boxListEvaluationCentroids(outputs[0]["boxes"],targets[0]["boxes"])
+            prec,rec = boxListEvaluation(filtered_outputs[0]["boxes"],targets[0]["boxes"])
+            dS, invS = boxListEvaluationCentroids(filtered_outputs[0]["boxes"],targets[0]["boxes"])
 
+            predMask = maskFromBoxes(filtered_outputs[0]["boxes"],imToStore.shape)
+
+    
         else:
             prec,rec, dS, invS = 0,0,0,0
+            predMask = maskFromBoxes([],imToStore.shape)
 
         precList.append(prec)
         recList.append(rec)
         dScore.append(dS)
         invScore.append(invS)
+        # store image and predicted mask
+        cv2.imwrite( os.path.join(predFolder,imageName), imToStore*255 )
+        cv2.imwrite( os.path.join(predFolder,"PREDMASK"+imageName),predMask  )
 
         evaluator_time = time.time() - evaluator_time
         #print("time "+str(evaluator_time))
         count+=1
+
+    # now reconstruct the full images and masks from what we have in the folder
+    for imageN,TileList  in dataset_test.getSliceFileInfo().items():
+        rebuildImageFromTiles(imageN,TileList,predFolder)
+
 
 
     # accumulate predictions from all images

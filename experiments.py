@@ -253,15 +253,14 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     bs = 64 # should probably be a parameter
     proportion = conf["Train_Perc"]/100
 
-    #dataset = ODDataset(os.path.join(conf["torchData"],"train"), True, conf["slice"], get_transform())
-    #dataset_test = ODDataset(os.path.join(conf["torchData"],"test"), True, conf["slice"], get_transform())
+    print("creating dataset in experiment")
     dataset = ODDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
     dataset_test = ODDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform())
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
     frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
-                                [["ssd","maskrcnn","fcos","retinanet","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doPytorchModels else []
+                                [["maskrcnn","ssd","fcos","retinanet","fasterrcnn"],[0.05,0.5],[0.25,0.5],[0.7,0.9]]) if doPytorchModels else []
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
     # predconf prediction confidence in testing
@@ -286,7 +285,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
         predConf = tParams["predconf"]
         start = time.time()
-        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf)
+        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams))  )
         #prec,rec, oprec, orec = predict_pytorch_maskRCNN(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf) #debugging purposes
         end = time.time()
         testTime = end - start

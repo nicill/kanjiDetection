@@ -138,7 +138,7 @@ class ODDataset(Dataset):
         Dataset for object detection with
         pytorch predefined networks
     """
-    def __init__(self, dataFolder = None, yoloFormat = True, slice = 500 , transform = None):
+    def __init__(self, dataFolder = None, yoloFormat = True, slice = 500 , transform = None, preSliced = True):
         """
             Receive a folder, should have an "images" and a "masks"
             subfolders with images with pre-defined names
@@ -150,6 +150,9 @@ class ODDataset(Dataset):
             store also the relation to the slices to the original images
             1) what was the original image 2) what coordinate in the original
             image is the 0,0 in the slice
+
+            "preSliced" contains information on whether the images are already the right size (have already been sliced)
+            or if this method has to do it
         """
 
         # Data Structures:
@@ -176,30 +179,50 @@ class ODDataset(Dataset):
 
                 im = read_Binary_Mask(os.path.join(self.imageFolder,imageName))
 
-                # slice mask and image together, store them in the forOD folder
-                wSize = (slice,slice)
-                count = 0
-                for (x, y, window) in sliding_window(im, stepSize = int(slice*0.8), windowSize = wSize ):
-                    # get mask window
-                    if window.shape == (slice,slice) :
-                        # do we need to fix this?
-                        # this should be done better, with padding!, maybe https://docs.opencv.org/3.4/dc/da3/tutorial_copyMakeBorder.html
-                        maskW = mask[y:y + wSize[1], x:x + wSize[0]]
-                        # discard empty masks
-                        cleanUpMask(maskW)
-                        # here we should probably add cleanUpMaskBlackPixels and maybe do it for YOLO too (in buildtrainvalidation?)
-                        if np.sum(maskW==0) > 100:
-                            # store them both
-                            cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
-                            self.imageNameList.append( os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png") )
-                            cv2.imwrite(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"),maskW)
-                            self.maskNameList.append(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"))
+                #check if the image already has the right size.
+                if preSliced:
+                    # images should already have the right size
+                    if im.shape[0] > slice or im.shape[1] > slice:raise Exception("ODDAtaset creator, wrongly presliced images")
+                    # no need to slice, but the images are tiles that come from other images, need to store this in self.slicesToImages[
 
-                            self.slicesToImages[imageName].append(("Tile"+str(count)+f[2:-6]+".png",x,y))
+                    cleanUpMask(mask, areaTH = 100)
+                    mask = cleanUpMaskBlackPixels(mask, im, areaTH = 100 )
 
-                            count+=1
+                    if np.sum(mask==0) > 100: #avoid empty masks
+                        # store them both
+                        self.imageNameList.append( os.path.join(self.imageFolder,imageName) )
+                        self.maskNameList.append( os.path.join(self.maskFolder,f) )
+
+                        # this was previously slice, the image name will be anything before the last "x" plus the file extension    
+
+                        self.slicesToImages[ imageName[:imageName.rfind("x")]+imageName[-4:]].append(imageName)
+
+                else:
+                    # slice mask and image together, store them in the forOD folder
+                    wSize = (slice,slice)
+                    count = 0
+                    for (x, y, window) in sliding_window(im, stepSize = int(slice*0.8), windowSize = wSize ):
+                        # get mask window
+                        if window.shape == (slice,slice) :
+                            # do we need to fix this?
+                            # this should be done better, with padding!, maybe https://docs.opencv.org/3.4/dc/da3/tutorial_copyMakeBorder.html
+                            maskW = mask[y:y + wSize[1], x:x + wSize[0]]
+                            # discard empty masks
+                            cleanUpMask(maskW)
+                            # here we should probably add cleanUpMaskBlackPixels and maybe do it for YOLO too (in buildtrainvalidation?)
+                            if np.sum(maskW==0) > 100:
+                                # store them both
+                                cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
+                                self.imageNameList.append( os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png") )
+                                cv2.imwrite(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"),maskW)
+                                self.maskNameList.append(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"))
+
+                                self.slicesToImages[imageName].append(("Tile"+str(count)+f[2:-6]+".png",x,y))
+
+                                count+=1
         #print(self.slicesToImages)
-
+        #print(len(self.slicesToImages))
+    
     def __getitem__(self, idx):
         # load images and masks
         img_path = self.imageNameList[idx]
@@ -231,11 +254,12 @@ class ODDataset(Dataset):
             xmax = np.max(pos[1])
             ymin = np.min(pos[0])
             ymax = np.max(pos[0])
-            if xmax-xmin > 1 and ymax-ymin >1:
+            if xmax-xmin > 1 and ymax-ymin > 1:
                 boxes.append([xmin, ymin, xmax, ymax])
             else:
-                print("weird box "+str([xmin, ymin, xmax, ymax]))
-                raise Exception("dataset.py, wrong mask should have been cleaned up ")
+                pass
+                #print("weird box "+str([xmin, ymin, xmax, ymax]), "ignoring it")
+                #raise Exception("dataset.py, wrong mask should have been cleaned up ")
 
         # only one class
         labels = torch.ones((num_objs,), dtype=torch.int64)
