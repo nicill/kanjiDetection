@@ -12,7 +12,7 @@ import numpy as np
 import os
 import torch
 from train import collate_fn
-from imageUtils import boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,rebuildImageFromTiles
+from imageUtils import boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,rebuildImageFromTiles, boxCoordsToFile
 
 from torchvision.transforms.functional import to_pil_image
 
@@ -385,7 +385,6 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
     """
         Inference for pytorch object detectors
     """
-
     data_loader = torch.utils.data.DataLoader(
         dataset_test,
         batch_size=1,
@@ -416,7 +415,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
     for ind, (images, targets) in enumerate(data_loader):
         imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
         imToStore = np.ascontiguousarray(images[0].permute(1, 2, 0))
-       
+
         # store test images to disk
         images = list(img.to(device) for img in images)
 
@@ -440,7 +439,6 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
             }
             filtered_outputs.append(filtered_output)
 
-
         model_time = time.time() - model_time
 
         evaluator_time = time.time()
@@ -448,21 +446,28 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
 
             prec,rec = boxListEvaluation(filtered_outputs[0]["boxes"],targets[0]["boxes"])
             dS, invS = boxListEvaluationCentroids(filtered_outputs[0]["boxes"],targets[0]["boxes"])
-
-            predMask = maskFromBoxes(filtered_outputs[0]["boxes"],imToStore.shape)
-
-    
+            boxCoords = filtered_outputs[0]["boxes"]
+            boxCatAndCoords = []
+            # create a new list of tuples with category predictions to save to file
+            for el,tup in zip(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]):
+                # convert so they are not tensors
+                el = el.tolist()
+                tup = tuple(tup.tolist())
+                boxCatAndCoords.append((el,)+tup)
         else:
-            prec,rec, dS, invS = 0,0,0,0
-            predMask = maskFromBoxes([],imToStore.shape)
+            prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
 
         precList.append(prec)
         recList.append(rec)
         dScore.append(dS)
         invScore.append(invS)
-        # store image and predicted mask
+
+        # store image, predicted mask and box coords
+        predMask = maskFromBoxes(boxCoords,imToStore.shape)
+
         cv2.imwrite( os.path.join(predFolder,imageName), imToStore*255 )
         cv2.imwrite( os.path.join(predFolder,"PREDMASK"+imageName),predMask  )
+        boxCoordsToFile(os.path.join(predFolder,"BOXCOORDS"+imageName[:-4]+".txt"),boxCatAndCoords)
 
         evaluator_time = time.time() - evaluator_time
         #print("time "+str(evaluator_time))
@@ -471,8 +476,6 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
     # now reconstruct the full images and masks from what we have in the folder
     for imageN,TileList  in dataset_test.getSliceFileInfo().items():
         rebuildImageFromTiles(imageN,TileList,predFolder)
-
-
 
     # accumulate predictions from all images
     torch.set_num_threads(n_threads)

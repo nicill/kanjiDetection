@@ -105,8 +105,8 @@ def cleanUpMaskBlackPixels(mask, im, areaTH = 100):
     """
     Receive a Mask with the position of kanji
     and the original image (binarized)
-    erase regions that have fewer black pixels 
-    in the original image than a given threshold 
+    erase regions that have fewer black pixels
+    in the original image than a given threshold
     """
     numLabels, labelIm, stats, centroids = cv2.connectedComponentsWithStats(255-mask)
 
@@ -114,7 +114,7 @@ def cleanUpMaskBlackPixels(mask, im, areaTH = 100):
     for j in range(1,len(np.unique(labelIm))):
         #aux = im.copy() # copy image so we do not break anything
 
-        blackInComponent = np.sum((labelIm == j ) & (im < 100 )) # count pixels in the mask that are black in the original image 
+        blackInComponent = np.sum((labelIm == j ) & (im < 100 )) # count pixels in the mask that are black in the original image
         if blackInComponent < areaTH:
             mask[labelIm == j] = 255
             #print("erasing "+str(j))
@@ -122,12 +122,12 @@ def cleanUpMaskBlackPixels(mask, im, areaTH = 100):
 
 def cleanUpFolderBlackPixels(folder, sakuma1 = False):
     """
-        traverse a folder with particular naming conventions 
+        traverse a folder with particular naming conventions
         ( annotations start with KP)
         and clean up the masks, OVERWRITES!
-        avoids subfolders   
+        avoids subfolders
         the sakuma 1 flag is to process the older file naming
-    """    
+    """
     for dirpath, dnames, fnames in os.walk(folder):
         for f in fnames:
             if "KP" in f: #annotation file
@@ -136,11 +136,11 @@ def cleanUpFolderBlackPixels(folder, sakuma1 = False):
                 mask = read_Binary_Mask(os.path.join(folder,f))
                 imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif" if sakuma1 else f[2:-6]+f[-4:] # images and masks must have the same extension
                 im = read_Binary_Mask(os.path.join(folder,imageName)) if sakuma1 else color_to_gray(read_Color_Image(os.path.join(folder,imageName)) )
-                cv2.imwrite(os.path.join(folder,f),cleanUpMaskBlackPixels( mask , im , 100)) 
+                cv2.imwrite(os.path.join(folder,f),cleanUpMaskBlackPixels( mask , im , 100))
         break # we do not want to chek subfolders
 
 
-        
+
 def recoupMasks(masks, weights, th):
     """
     Function to combine a list of
@@ -222,7 +222,7 @@ def eraseNonFatRegions(im,fatness):
 
 def precRecall(dScore, invScore):
     """
-        (Receive two list, the first with tuples of boxes found and total boxes 
+        (Receive two list, the first with tuples of boxes found and total boxes
         in the GT found in the prediction, dScore and viceversa, invScore in that order)
     """
     gtBoxes = sum([ x[1] for x in dScore ])
@@ -246,7 +246,7 @@ def boxesFound(im1, im2, percentage = True, verbose = False):
         """
         inner function to count how
         many boxes in one image
-        are also in the other 
+        are also in the other
         (regarding if the centroid is black)
         """
         nonlocal im2
@@ -282,19 +282,19 @@ def boxListEvaluation(bPred, bGT,th = 0.5):
         """
             goes over all boxes in the ground truth and checks
             if they overlap with the current box more than the threshold
-            store them in a dictionary 
+            store them in a dictionary
         """
         for boxGT in gtB:
             op = iou(b,boxGT)
             #print("overlap percentage "+str(op))
             if op>th and str(b) not in tpDict:
                 tpDict[str(b)] = True
-                
+
 
     def iou(b1, b2):
         """
         Compute IoU between two boxes.
-        
+
         b1: list or tuple [x1_min, y1_min, x1_max, y1_max]
         b2: list or tuple [x2_min, y2_min, x2_max, y2_max]
         """
@@ -328,12 +328,12 @@ def boxListEvaluation(bPred, bGT,th = 0.5):
     #num_tp = 0
     for box in bPred:
         isTrueP(box,bGT) # this function already updates the tpDict
-    num_tp = len(tpDict.keys())    
+    num_tp = len(tpDict.keys())
 
     tpDict = {}
     for box in bGT:
         isTrueP(box,bPred) # this function already updates the tpDict
-    num_tpRECALL = len(tpDict.keys())    
+    num_tpRECALL = len(tpDict.keys())
 
 
     #print(tpDict)
@@ -355,7 +355,7 @@ def boxListEvaluationCentroids(bPred, bGT):
             returns the center of a box in x1,y1,x2,y2 format
         """
         return b[0]+(b[2]-b[0])/2,b[1]+(b[3]-b[1])/2
-    
+
     def inside(b,p):
         """
         Check if p is inside box b
@@ -372,7 +372,7 @@ def boxListEvaluationCentroids(bPred, bGT):
         for boxGT in gtB:
             if inside(boxGT,c) and str(boxGT) not in tpDict:
                     tpDict[str(boxGT)] = True
-                
+
     # Dictionary that contains the boxes in the ground truth that have been overlapped by a predicted box
     tpDict = {}
     #num_tp = 0
@@ -381,7 +381,7 @@ def boxListEvaluationCentroids(bPred, bGT):
         #isTP = isTrueP(box,bGT)
         #if isTP: num_tp+=1
         isTrueP(box,bGT)
-    num_tp = len(tpDict.keys())    
+    num_tp = len(tpDict.keys())
 
     #print(tpDict)
     #print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
@@ -398,7 +398,7 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
     """
     def get_original_image_size(filenames, folder_path):
         """
-        Computes the full size of the original image based on tile positions and dimensions using OpenCV.
+        Compute size of original image based on tiles (OpenCV).
 
         Args:
             filenames (list of str): List of filenames like 'x0y0.jpg', 'x200y150.png', etc.
@@ -415,7 +415,7 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
             match = re.search(r'x(\d+)y(\d+)', fname)
             if not match:
                 raise ValueError(f"Filename '{fname}' does not match 'x<num>y<num>' pattern.")
-            
+
             x, y = int(match.group(1)), int(match.group(2))
 
             # Read image using OpenCV
@@ -423,7 +423,7 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
             img = cv2.imread(image_path)
             if img is None:
                 raise FileNotFoundError(f"Could not read image: {image_path}")
-            
+
             tile_height, tile_width = img.shape[:2]
 
             # Compute max extent of the image
@@ -440,6 +440,8 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
     stitched_mask = np.ones((full_height, full_width), dtype=np.uint8)
     stitched_mask = stitched_mask*255
 
+    # list of boxes in the original image coordinates
+    boxCoords = []
 
     for fname in TileList:
         match = re.search(r'x(\d+)y(\d+)', fname)
@@ -459,14 +461,22 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
 
         # make sure to overlap all mask predictions
         stitched_maskAUX = np.ones((full_height, full_width), dtype=np.uint8)
-        stitched_maskAUX[y:y+h, x:x+w] = tileMask 
-        stitched_mask[ stitched_maskAUX == 0 ] = 0  
+        stitched_maskAUX[y:y+h, x:x+w] = tileMask
+        stitched_mask[ stitched_maskAUX == 0 ] = 0
         #stitched_mask[y:y+h, x:x+w] = tileMask
-    
+
+        # also read box coords
+        with open(os.path.join(predFolder, "BOXCOORDS"+fname[:-4]+".txt")) as f:
+            for line in f.readlines():
+                c,px,py,w,h = tuple(line.strip().split(" "))
+                boxCoords.append((c,str(int(px)+int(x)),str(int(py)+int(y)),w,h))
+
+        # now that we are here, we should create the stitched image of images with highlighted rectangle boxes
+
     # write to disk
     cv2.imwrite(os.path.join(predFolder,"FULL",imageN),stitched_image )
     cv2.imwrite(os.path.join(predFolder,"FULL","PREDMASK"+imageN),stitched_mask )
-
+    boxCoordsToFile(os.path.join(predFolder,"FULL","BOXCOORDS"+imageN[:-4]+".txt"),boxCoords)
 
 def maskFromBoxes(boxes, image_size):
     """
@@ -491,7 +501,6 @@ def maskFromBoxes(boxes, image_size):
         mask[y1:y2, x1:x2] = 255
 
     return 255-mask
-
 
 
 def boxesFromMask(img, cl = 0, yoloFormat = True):
@@ -579,7 +588,7 @@ if __name__ == "__main__":
     # single image clean up small regions
     #mask = read_Binary_Mask(sys.argv[1])
     #im = color_to_gray(read_Color_Image(sys.argv[2]))
-    #cv2.imwrite(sys.argv[3],cleanUpMaskBlackPixels( mask , im , 100)) 
+    #cv2.imwrite(sys.argv[3],cleanUpMaskBlackPixels( mask , im , 100))
 
     # folder clean up black pixels, careful as it overwrites.
     cleanUpFolderBlackPixels(sys.argv[1], sakuma1 = True)
