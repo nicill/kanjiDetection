@@ -468,15 +468,44 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
         # also read box coords
         with open(os.path.join(predFolder, "BOXCOORDS"+fname[:-4]+".txt")) as f:
             for line in f.readlines():
-                c,px,py,w,h = tuple(line.strip().split(" "))
-                boxCoords.append((c,str(int(px)+int(x)),str(int(py)+int(y)),w,h))
+                c,px1,py1,px2,py2 = tuple(line.strip().split(" "))
+                newP1 = (int(float(px1) + float(x)), int(float(py1) + float(y)))
+                newP2 = (int(float(px2) + float(x)), int(float(py2) + float(y)))
+                boxCoords.append((c,str(newP1[0]),str(newP1[1]),str(newP2[0]),str(newP2[1])))
 
         # now that we are here, we should create the stitched image of images with highlighted rectangle boxes
 
-    # write to disk
+    # write to disk (image, mask, bounding box file)
     cv2.imwrite(os.path.join(predFolder,"FULL",imageN),stitched_image )
     cv2.imwrite(os.path.join(predFolder,"FULL","PREDMASK"+imageN),stitched_mask )
     boxCoordsToFile(os.path.join(predFolder,"FULL","BOXCOORDS"+imageN[:-4]+".txt"),boxCoords)
+    # also, make a pretty image of the original image with boxes and categories
+    cv2.imwrite(os.path.join(predFolder,"FULL","Pretty"+imageN), prettyImage(boxCoords,stitched_image) )
+
+def prettyImage(boxes, image, color = 125, thickness=2, font_scale=0.5, font_thickness=2):
+    """
+        Draw bounding box countours on image
+        box format is p1x,p1y,p2x,p2y
+    """
+    for tup in boxes:
+        category = tup[0]
+        px1, py1, px2, py2 = map(float, tup[1:])
+        top_left = (int(px1), int(py1))
+        bottom_right = (int(px2), int(py2))
+
+        # Draw rectangle
+        cv2.rectangle(image, top_left, bottom_right, color, thickness)
+
+        # Put label
+        label = str(category)
+        label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
+        label_origin = (top_left[0], top_left[1] - 5 if top_left[1] - 5 > 0 else top_left[1] + label_size[1] + 5)
+
+        cv2.putText(image, label, label_origin, cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale, color, font_thickness, lineType=cv2.LINE_AA)
+
+    return image
+
 
 def maskFromBoxes(boxes, image_size):
     """
