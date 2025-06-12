@@ -260,7 +260,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     print("Experiments, train dataset length "+str(len(dataset) ))
 
     frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
-                                [["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.05, 0.25, 0.5],[0,1,0.25,0,3,0.5],[0.7,0.9,0.95]]) if doPytorchModels else []
+                                [["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
     # predconf prediction confidence in testing

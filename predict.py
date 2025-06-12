@@ -392,7 +392,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
         collate_fn=collate_fn
     )
     print("Testing Dataset Length "+str(len(dataset_test)))
-    print("testing dataset image dict "+str(dataset_test.slicesToImages))
+    #print("testing dataset image dict "+str(dataset_test.slicesToImages))
 
     # create output folder if necessary
     Path(os.path.join(predFolder,"FULL")).mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,7 @@
 import os
 from pdf2image import convert_from_path
 from skimage.filters import threshold_sauvola
+from imageUtils import read_grayscale
 import cv2
 import sys, pymupdf
 import fitz
@@ -40,6 +41,25 @@ def deNoiseFolder(folder, sTh = 0.85, ws = 271):
                 ws = 271
                 sauv = sauvolaThreshold(img_gray,hardness = sTh, window_size= ws)
                 cv2.imwrite(os.path.join(folder,newName),sauv)
+
+def deNoiseFolderADV(folder):
+    """
+        Receive a folder corresponding
+        to a single sakuma data folder with all the pages from all the books 
+        and denoise them if they have annotations
+    """
+    for dirpath, dnames, fnames in os.walk(folder):
+        for f in fnames:
+            if "KP" in str(f):
+                # image name KPsakuma-0447_Page_03AN
+                imName = f[2:f.find("AN")]+".png"
+                newName = imName[:-4]+"denoised"+".png"
+                # read the corresponding image as a grayscale image
+                print("      ***** processing "+str(f))
+                im = read_grayscale(os.path.join(folder,imName))
+
+                noiseRed = reduceNoiseSakuma2(im)
+                cv2.imwrite(os.path.join(folder,newName),noiseRed)
 
 
 def pdfToPNG(pdfPATH,outPath = ""):
@@ -96,7 +116,7 @@ def otsu(img):
     ret3,th3 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
     return th3
 
-def sauvolaThreshold(im,hardness = 1, window_size=25):
+def sauvolaThreshold(im,hardness = 0.85, window_size=25):
   """
   Function to apply Sauvola local threshold
   """
@@ -104,15 +124,15 @@ def sauvolaThreshold(im,hardness = 1, window_size=25):
   return (im > hardness*th).astype(int)*255
 
 #source https://docs.opencv.org/3.4/dd/dd7/tutorial_morph_lines_detection.html
-def cleanIsolatedPoints(img,kernel, it=3):
+def cleanIsolatedPoints(img, it = 5):
     """
-        to clean small isolated noise regions
-        possible kernel
-        np.ones((size1,size1),np.uint8)
+        Function to clean small isolated noise 
+        regions with square kernel
     """
+    kernel = np.ones((5, 5), np.uint8)
     first=cv2.erode(cv2.bitwise_not(img.astype('uint8') ),kernel,iterations = it)
-    #return 250-first
     return cv2.bitwise_not(cv2.dilate(first,kernel,iterations = it))
+
 
 def findLinesCanny(gray_image):
 
@@ -123,88 +143,126 @@ def findLinesCanny(gray_image):
     upper = int(min(255, (1.0 + sigma) * v))
     return cv2.Canny(gray_image, lower, upper)
 
+def enhanceBlackCharacters(im,size = 3,it =1):
+  """
+    Function that receives a grayscale image 
+    and erodes using a square kernel
+    In Wasan documents, it enhances the black parts of the document
+  """
+  kernel = np.ones((size,size),np.uint8)
+  return cv2.erode(im,kernel,iterations = it)   
+
+def maskImage(im,mask):
+    """
+        receives an Image and a masks (black info on white bck)
+        return the pixels in the image that are 
+        white in the mask
+    """
+    aux = im.copy()
+    aux[mask==255] = 255 
+    return aux
+
 def findBackgroundClusters(img):
     size1=5
     kernel=np.ones((size1,size1),np.uint8)
-    return cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
+    return cv2.morphologyEx(255-img, cv2.MORPH_OPEN, kernel)
 
-def eraseSmall(maskI, areaTH = 100):
+def eraseSmall(maskI, areaTH = 250, its = 5, ws = 501):
     """
     Receive a binary image
     erase regions that are small than the threshold
     """
     # copy not to destroy input
     mask = maskI.copy()
-    # Binarize, just in case
-    mask[mask<=10] = 0
-    mask[mask>10] = 255
+    mask = sauvolaThreshold(mask,hardness = 1, window_size = ws)
+
+    mask = cleanIsolatedPoints(mask, its)
     numLabels, labelIm, stats, centroids = cv2.connectedComponentsWithStats(255-mask)
 
-    #print(np.unique(labelIm))
-    #print(np.sum(mask==0))
-    # Avoid first centroid, unbounded component
     for j in range(1,len(np.unique(labelIm))):
         if stats[j][4] < areaTH :
             mask[labelIm == j] = 255
-            #print("erasing "+str(j))
-            #print(np.sum(labelIm==j))
-
     return mask
 
-def detectVerticalLines(gray):
+def detectLines(gray, kWidth = 1, ratioLines = 50):
     """
-        possible kernel
-        cv2.getStructuringElement(cv2.MORPH_RECT,(8,30))
-        does this work????
+        Function to extract vertical and horizontal lines 
+        using morphological operators
     """
-    gray = cv2.bitwise_not(gray)
-    bw = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2)
+    bw = cv2.adaptiveThreshold(255-gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2)
     # Create the images that will use to extract the horizontal and vertical lines
-    vertical = np.copy(bw)
-    # Specify size on vertical axis
-    rows = vertical.shape[0]
-    verticalsize = rows // 50
+    processingV = np.copy(bw)
+    processingH = np.copy(bw)
+    
+    # Specify sizes 
+    rows, columns = processingV.shape
+    vSize = rows // ratioLines
+    hSize = columns // ratioLines
+    
+    # structure elements for extracting vertical and horizontal lines through morphology operations
+    vStruct = cv2.getStructuringElement(cv2.MORPH_RECT, (kWidth, vSize))
+    hStruct = cv2.getStructuringElement(cv2.MORPH_RECT, (hSize, kWidth))
 
-    print(verticalsize)
-    # CreImageProcessingUtils.ate structure element for extracting vertical lines through morphology operations
-    verticalStructure = cv2.getStructuringElement(cv2.MORPH_RECT, (1, verticalsize))
     # Apply morphology operations
-    vertical = cv2.erode(vertical, verticalStructure)
-    vertical = cv2.dilate(vertical, verticalStructure)
+    #vertical lines
+    processingV = cv2.erode(processingV, vStruct)
+    processingV = cv2.dilate(processingV, vStruct)
+    #horizontal lines
+    processingH = cv2.erode(processingH, hStruct)
+    processingH = cv2.dilate(processingH, hStruct)
+        
+    # Invert resutl images and gather results in a single image
+    processing = 255 - processingV
+    processing[processingH == 255] = 0
 
-    # Inverse vertical image
-    vertical = cv2.bitwise_not(vertical)
-    '''
-    Extract edges and smooth image according to the logic
-    1. extract edges
-    2. dilate(edges)
-    3. src.copyTo(smooth)
-    4. blur smooth img
-    5. smooth.copyTo(src, edges)
-    '''
     # Step 1
-    edges = cv2.adaptiveThreshold(vertical, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 3, -2)
+    edges = cv2.adaptiveThreshold(processing, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 3, -2)
     # Step 2
-    kernel = np.ones((25, 25), np.uint8)
+    kernel = np.ones((35, 35), np.uint8)
     edges = cv2.dilate(edges, kernel)
-    # Step 3
-    #smooth = np.copy(vertical)
-    # Step 4
-    #smooth = cv2.blur(smooth, (2, 2))
-    # Step 5
-    #(rows, cols) = np.where(edges != 0)
-    #vertical[rows, cols] = smooth[rows, cols]
-    # Show final result
-    return cv2.bitwise_not(edges)
 
+    # Show final result
+    retVal = 255 - gray
+    retVal[edges== 255] = 255
+    return retVal
+
+def reduceNoiseSakuma2(im, eroSize = 3, eroIts = 1, kW =1, rL = 50, areaTH = 250, smallRIts = 3, grayTH = 150):
+    """
+    Receives a grayscale image and reduces 
+    noise according to the procedure described in
+    https://www.mdpi.com/2076-3417/11/17/8050
+    modified to include sauvola thresholding
+    """
+    # step 1, bring up the kanji with erosion 
+    size = eroSize
+    its = eroIts
+    clearerKanji = enhanceBlackCharacters(im,size,its)
+    #step 2, function to erase linear structures
+    noLines = detectLines(clearerKanji, kWidth = kW, ratioLines = rL)
+    # step 3, mask original image with the line removed image
+    masked = maskImage(im,noLines)
+    # step 4, bring up the kanji again with second erosion 
+    clearerKanji2 = enhanceBlackCharacters(masked,size+2,its+2)
+    # Step 5, clean up small noise regions, includes binarization
+    smallRegionErased = eraseSmall(clearerKanji2, areaTH = areaTH, its = smallRIts)
+    # step 6, mask again
+    masked2 = maskImage(masked, smallRegionErased)
+    # step 7 HARD global thresholding to erase gray
+    final = masked2.copy()
+    final[masked2<grayTH] = 0 
+    final[masked2>=grayTH] = 255
+    return final
 
 
 if __name__ == '__main__':
 
-    deNoiseSubFolders(sys.argv[1])
+    deNoiseFolderADV(sys.argv[1])
+
     sys.exit()
     ##OLD CODE
+    deNoiseSubFolders(sys.argv[1])
     files = [x for x in sys.argv[1:]]
+    #older CODE
     # now do local threshold processing for all images
     for imFile in files:
         # read the image as a color image

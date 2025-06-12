@@ -52,11 +52,18 @@ def read_Color_Image(path):
     if retVal is None: raise Exception("Reading Color image, something went wrong with the file name "+str(path))
     return retVal
 
+#Read grayscale image
+def read_grayscale(path):
+
+    retVal = cv2.imread(path,cv2.IMREAD_GRAYSCALE)
+    if retVal is None: raise Exception("Reading GRAYSCALE image, something went wrong with the file name "+str(path))
+    return retVal
+
 #Read binary image
 def read_Binary_Mask(path):
 
     retVal = cv2.imread(path,cv2.IMREAD_GRAYSCALE)
-    if retVal is None: raise Exception("Reading GRAYSCALE image, something went wrong with the file name "+str(path))
+    if retVal is None: raise Exception("Reading binary image, something went wrong with the file name "+str(path))
 
     # Binarize
     retVal[retVal<=50] = 0
@@ -482,7 +489,7 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
     # also, make a pretty image of the original image with boxes and categories
     cv2.imwrite(os.path.join(predFolder,"FULL","Pretty"+imageN), prettyImage(boxCoords,stitched_image) )
 
-def prettyImage(boxes, image, color = 125, thickness=2, font_scale=0.5, font_thickness=2):
+def prettyImage(boxes, image, color = 125, thickness=4, font_scale=0.5, font_thickness=3):
     """
         Draw bounding box countours on image
         box format is p1x,p1y,p2x,p2y
