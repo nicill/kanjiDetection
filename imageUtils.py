@@ -5,6 +5,7 @@ from math import sqrt
 import os
 from pathlib import Path
 import re
+import torch
 
 def resampleTestFolder(folder, factor, color = False):
     """
@@ -512,6 +513,83 @@ def prettyImage(boxes, image, color = 125, thickness=4, font_scale=0.5, font_thi
                     font_scale, color, font_thickness, lineType=cv2.LINE_AA)
 
     return image
+
+def filter_boxes_by_iou_and_area_distance(categories, boxes, iou_threshold=0.5):
+    """
+    Args:
+        categories: list or tensor of shape (N,) with category tensors or ints
+        boxes: tensor of shape (N,4), boxes as [x1,y1,x2,y2]
+        iou_threshold: float threshold for IoU to filter
+
+    Returns:
+        filtered_categories, filtered_boxes
+    """
+
+    # Convert categories to tensor if list of 1-element tensors
+    if isinstance(categories, list):
+        categories = torch.stack(categories).squeeze()  # (N,)
+
+    boxes = boxes.float()
+    N = boxes.shape[0]
+
+    # Compute areas of boxes
+    areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+
+    # Compute average area
+    avg_area = areas.float().mean()
+
+    # Compute IoU matrix: (N, N)
+    iou_matrix = torch.zeros((N, N), dtype=torch.float32)
+
+    for i in range(N):
+        box1 = boxes[i]
+        area1 = areas[i]
+
+        # Intersection
+        xx1 = torch.max(box1[0], boxes[:, 0])
+        yy1 = torch.max(box1[1], boxes[:, 1])
+        xx2 = torch.min(box1[2], boxes[:, 2])
+        yy2 = torch.min(box1[3], boxes[:, 3])
+
+        w = (xx2 - xx1).clamp(min=0)
+        h = (yy2 - yy1).clamp(min=0)
+        inter = w * h
+
+        union = area1 + areas - inter
+
+        iou = inter / union
+        iou_matrix[i] = iou
+
+    keep_mask = torch.ones(N, dtype=torch.bool)
+
+    for i in range(N):
+        if not keep_mask[i]:
+            continue  # already removed
+
+        overlaps = iou_matrix[i]
+        overlaps[i] = 0  # exclude self
+
+        overlapped_indices = torch.where(overlaps > iou_threshold)[0]
+
+        for j in overlapped_indices:
+            if not keep_mask[j]:
+                continue  # already removed
+
+            # Compare distance to average area
+            dist_i = torch.abs(areas[i] - avg_area)
+            dist_j = torch.abs(areas[j] - avg_area)
+
+            # Remove the one farther from average area
+            if dist_i > dist_j:
+                keep_mask[i] = False
+                break  # no need to check more for i, it is removed
+            else:
+                keep_mask[j] = False
+
+    filtered_boxes = boxes[keep_mask]
+    filtered_categories = categories[keep_mask]
+
+    return filtered_categories, filtered_boxes
 
 
 def maskFromBoxes(boxes, image_size):

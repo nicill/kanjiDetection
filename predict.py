@@ -12,7 +12,7 @@ import numpy as np
 import os
 import torch
 from train import collate_fn
-from imageUtils import boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,rebuildImageFromTiles, boxCoordsToFile
+from imageUtils import boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,rebuildImageFromTiles, boxCoordsToFile, filter_boxes_by_iou_and_area_distance
 
 from torchvision.transforms.functional import to_pil_image
 
@@ -444,12 +444,18 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
         evaluator_time = time.time()
         if len(filtered_outputs)>=1 :
 
-            prec,rec = boxListEvaluation(filtered_outputs[0]["boxes"],targets[0]["boxes"])
-            dS, invS = boxListEvaluationCentroids(filtered_outputs[0]["boxes"],targets[0]["boxes"])
-            boxCoords = filtered_outputs[0]["boxes"]
+            # modify boxes and labels to eliminate boxes with too much overlap
+            # call filter_boxes_by_iou_and_area_distance from imageUtils
+            correctedLabels, correctedBoxes = filter_boxes_by_iou_and_area_distance(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"])
+
+            prec,rec = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
+            dS, invS = boxListEvaluationCentroids(correctedBoxes,targets[0]["boxes"])
+            boxCoords = correctedBoxes
             boxCatAndCoords = []
+
+
             # create a new list of tuples with category predictions to save to file
-            for el,tup in zip(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]):
+            for el,tup in zip(correctedLabels, correctedBoxes):
                 # convert so they are not tensors
                 el = el.tolist()
                 tup = tuple(tup.tolist())

@@ -69,7 +69,6 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
                         trainAgain = False, proportion = 0.9, mType = "maskrcnn",
                         trainParams = {"score":0.5,"nms":0.3} ):
 
-    # split the dataset in train and test set
     data_loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=2,
