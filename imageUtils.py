@@ -524,7 +524,6 @@ def filter_boxes_by_iou_and_area_distance(categories, boxes, iou_threshold=0.5):
     Returns:
         filtered_categories, filtered_boxes
     """
-
     # Convert categories to tensor if list of 1-element tensors
     if isinstance(categories, list):
         categories = torch.stack(categories).squeeze()  # (N,)
