@@ -12,7 +12,11 @@ import numpy as np
 import os
 import torch
 from train import collate_fn
-from imageUtils import boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,rebuildImageFromTiles, boxCoordsToFile, filter_boxes_by_iou_and_area_distance
+from imageUtils import (
+boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,
+rebuildImageFromTiles, boxCoordsToFile, filter_boxes_by_overlap_and_area_distance,
+fillHolesInGrid
+)
 
 from torchvision.transforms.functional import to_pil_image
 
@@ -445,8 +449,10 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
         if len(filtered_outputs)>=1 :
 
             # modify boxes and labels to eliminate boxes with too much overlap
-            # call filter_boxes_by_iou_and_area_distance from imageUtils
-            correctedLabels, correctedBoxes = filter_boxes_by_iou_and_area_distance(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"])
+            correctedLabels, correctedBoxes = filter_boxes_by_overlap_and_area_distance(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"])
+
+            # now try to fill holes in the grid
+            correctedLabels, correctedBoxes = fillHolesInGrid(correctedLabels, correctedBoxes, imToStore)
 
             prec,rec = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
             dS, invS = boxListEvaluationCentroids(correctedBoxes,targets[0]["boxes"])

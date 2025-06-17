@@ -514,82 +514,187 @@ def prettyImage(boxes, image, color = 125, thickness=4, font_scale=0.5, font_thi
 
     return image
 
-def filter_boxes_by_iou_and_area_distance(categories, boxes, iou_threshold=0.5):
+def filter_boxes_by_overlap_and_area_distance(categories, boxes, overlap_threshold=0.5):
     """
     Args:
-        categories: list or tensor of shape (N,) with category tensors or ints
-        boxes: tensor of shape (N,4), boxes as [x1,y1,x2,y2]
-        iou_threshold: float threshold for IoU to filter
+        categories: list of 1-element tensors or tensor (N,)
+        boxes: tensor of shape (N, 4) [x1,y1,x2,y2]
+        overlap_threshold: fraction threshold for overlap (e.g., 0.5)
 
     Returns:
         filtered_categories, filtered_boxes
     """
-    # Convert categories to tensor if list of 1-element tensors
     if isinstance(categories, list):
-        categories = torch.stack(categories).squeeze()  # (N,)
+        categories = torch.stack(categories).squeeze()
 
     boxes = boxes.float()
     N = boxes.shape[0]
 
-    # Compute areas of boxes
+    # Compute areas
     areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    avg_area = areas.mean()
 
-    # Compute average area
-    avg_area = areas.float().mean()
-
-    # Compute IoU matrix: (N, N)
-    iou_matrix = torch.zeros((N, N), dtype=torch.float32)
-
-    for i in range(N):
-        box1 = boxes[i]
-        area1 = areas[i]
-
-        # Intersection
-        xx1 = torch.max(box1[0], boxes[:, 0])
-        yy1 = torch.max(box1[1], boxes[:, 1])
-        xx2 = torch.min(box1[2], boxes[:, 2])
-        yy2 = torch.min(box1[3], boxes[:, 3])
-
-        w = (xx2 - xx1).clamp(min=0)
-        h = (yy2 - yy1).clamp(min=0)
-        inter = w * h
-
-        union = area1 + areas - inter
-
-        iou = inter / union
-        iou_matrix[i] = iou
-
+    # Keep mask
     keep_mask = torch.ones(N, dtype=torch.bool)
 
     for i in range(N):
         if not keep_mask[i]:
-            continue  # already removed
+            continue
 
-        overlaps = iou_matrix[i]
-        overlaps[i] = 0  # exclude self
+        box1 = boxes[i]
+        area1 = areas[i]
 
-        overlapped_indices = torch.where(overlaps > iou_threshold)[0]
-
-        for j in overlapped_indices:
+        for j in range(i + 1, N):
             if not keep_mask[j]:
-                continue  # already removed
+                continue
 
-            # Compare distance to average area
-            dist_i = torch.abs(areas[i] - avg_area)
-            dist_j = torch.abs(areas[j] - avg_area)
+            box2 = boxes[j]
+            area2 = areas[j]
 
-            # Remove the one farther from average area
-            if dist_i > dist_j:
-                keep_mask[i] = False
-                break  # no need to check more for i, it is removed
-            else:
-                keep_mask[j] = False
+            # Intersection
+            xx1 = torch.max(box1[0], box2[0])
+            yy1 = torch.max(box1[1], box2[1])
+            xx2 = torch.min(box1[2], box2[2])
+            yy2 = torch.min(box1[3], box2[3])
+
+            w = (xx2 - xx1).clamp(min=0)
+            h = (yy2 - yy1).clamp(min=0)
+            inter = w * h
+
+            # Overlap ratios
+            overlap1 = inter / area1
+            overlap2 = inter / area2
+
+            if overlap1 > overlap_threshold or overlap2 > overlap_threshold:
+                # Pick box farther from average area to remove
+                dist1 = torch.abs(area1 - avg_area)
+                dist2 = torch.abs(area2 - avg_area)
+
+                if dist1 > dist2:
+                    keep_mask[i] = False
+                    break  # i is removed, stop comparing i
+                else:
+                    keep_mask[j] = False
 
     filtered_boxes = boxes[keep_mask]
     filtered_categories = categories[keep_mask]
 
     return filtered_categories, filtered_boxes
 
+def fillHolesInGrid(categories, boxes, image, overlap_thresh=0.05, black_thresh=0.5):
+    """
+    Fills vertical holes in grid columns using vectorized operations.
+
+    Args:
+        categories: tensor (N,) or list of 1-element tensors.
+        boxes: tensor (N,4) [x1,y1,x2,y2]
+        image: numpy array (H,W) or (H,W,3)
+
+    Returns:
+        final_categories, final_boxes
+    """
+    if isinstance(categories, list):
+        categories = torch.stack(categories).squeeze()
+
+    boxes = boxes.float()
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+
+    # 1) Compute robust mean area
+    areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    sorted_areas, _ = torch.sort(areas)
+    n = len(areas)
+    lo, hi = int(0.1 * n), int(0.9 * n)
+    avArea = sorted_areas[lo:hi].mean().item()
+
+    # 2) Compute black pixel count per box
+    boxes_np = boxes.int().cpu().numpy()
+    black_counts = np.array([
+        np.sum(img_gray[y1:y2, x1:x2] < 25)
+        for x1, y1, x2, y2 in boxes_np
+    ])
+    avBlack = np.mean(black_counts)
+
+    # 3) Compute centroids & group by X
+    cx = (boxes[:, 0] + boxes[:, 2]) / 2
+    cy = (boxes[:, 1] + boxes[:, 3]) / 2
+    centroids = torch.stack([cx, cy], dim=1)
+
+    # Group into columns by X: bin them with tolerance
+    sorted_idx = torch.argsort(cx)
+    cx_sorted = cx[sorted_idx]
+
+    columns = []
+    col = [sorted_idx[0].item()]
+    tol = 20
+
+    for i in range(1, len(cx_sorted)):
+        if abs(cx_sorted[i] - cx_sorted[i-1]) < tol:
+            col.append(sorted_idx[i].item())
+        else:
+            columns.append(col)
+            col = [sorted_idx[i].item()]
+    columns.append(col)
+
+    new_boxes = [boxes]
+    new_cats = [categories]
+
+    # 4) Process each column
+    for col_idxs in columns:
+        col_boxes = boxes[col_idxs]
+        col_cx = cx[col_idxs]
+        col_cy = cy[col_idxs]
+
+        # Sort by Y
+        sorty = torch.argsort(col_cy)
+        col_boxes = col_boxes[sorty]
+        col_cx = col_cx[sorty]
+        col_cy = col_cy[sorty]
+
+        # Walk through pairs
+        for i in range(len(col_cy) - 1):
+            top = col_cy[i]
+            bot = col_cy[i+1]
+
+            gap = bot - top
+
+            side = np.sqrt(avArea)
+            if gap > 1.2 * side:
+                # candidate centroid = top + side
+                new_cy = top + side
+                new_cx = col_cx[i]
+
+                x1 = int(new_cx - side/2)
+                y1 = int(new_cy - side/2)
+                x2 = int(new_cx + side/2)
+                y2 = int(new_cy + side/2)
+
+                candidate = torch.tensor([x1, y1, x2, y2]).float()
+
+                # Vectorized overlap: candidate vs all boxes
+                xx1 = torch.maximum(candidate[0], boxes[:, 0])
+                yy1 = torch.maximum(candidate[1], boxes[:, 1])
+                xx2 = torch.minimum(candidate[2], boxes[:, 2])
+                yy2 = torch.minimum(candidate[3], boxes[:, 3])
+
+                inter = (xx2 - xx1).clamp(min=0) * (yy2 - yy1).clamp(min=0)
+                max_overlap = inter.max().item() / avArea
+
+                if max_overlap > overlap_thresh:
+                    continue  # too much overlap
+
+                # Check blackness
+                roi = img_gray[y1:y2, x1:x2]
+                black = np.sum(roi < 25)
+                if black < black_thresh * avBlack:
+                    continue  # not enough black
+
+                # Accept new box
+                new_boxes.append(candidate.unsqueeze(0))
+                new_cats.append(torch.tensor([0]))  # or your label
+
+    final_boxes = torch.cat(new_boxes, dim=0)
+    final_cats = torch.cat(new_cats, dim=0)
+    return final_cats, final_boxes
 
 def maskFromBoxes(boxes, image_size):
     """
