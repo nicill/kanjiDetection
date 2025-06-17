@@ -15,7 +15,7 @@ from train import collate_fn
 from imageUtils import (
 boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,
 rebuildImageFromTiles, boxCoordsToFile, filter_boxes_by_overlap_and_area_distance,
-fillHolesInGrid
+fillHolesInGrid, borderbox
 )
 
 from torchvision.transforms.functional import to_pil_image
@@ -435,34 +435,49 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     for ind, (images, targets) in enumerate(data_loader):
         imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
         imToStore = np.ascontiguousarray(images[0].permute(1, 2, 0))
+        height, width = imToStore.shape[:2]
 
         # store test images to disk
         images = list(img.to(device) for img in images)
 
         torch.cuda.synchronize()
-        model_time = time.time()
         outputs = model(images)
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
 
-        # Move outputs to CPU and filter based on confidence score
+        # Move outputs to CPU and filter based on confidence score, also filter out border boxes.
         filtered_outputs = []
         for output in outputs:
-            # Filter masks where confidence (score) is > 0.9
             high_conf_indices = output['scores'] > predConfidence
 
-            # Keep only high-confidence masks, boxes, and labels
+            keep_indices = []
+            for i, box in enumerate(output['boxes']):
+                if high_conf_indices[i] and not borderbox(box, width, height):
+                    keep_indices.append(i)
+
+            keep_indices = torch.tensor(keep_indices, dtype=torch.long)
+
             filtered_output = {
-                'boxes': output['boxes'][high_conf_indices].to(cpu_device),
-                'labels': output['labels'][high_conf_indices].to(cpu_device),
-                'scores': output['scores'][high_conf_indices].to(cpu_device),
+                'boxes': output['boxes'][keep_indices].to(cpu_device),
+                'labels': output['labels'][keep_indices].to(cpu_device),
+                'scores': output['scores'][keep_indices].to(cpu_device),
             }
             filtered_outputs.append(filtered_output)
 
-        model_time = time.time() - model_time
+        # filter out border boxes for targets targets
+        boxes = targets[0]['boxes']
+        keep_target_indices = [
+            i for i, box in enumerate(boxes) if not borderbox(box, width, height)
+        ]
+        if keep_target_indices:
+            keep_target_indices = torch.tensor(keep_target_indices, dtype=torch.long)
+            targets[0]['boxes'] = boxes[keep_target_indices]
+            targets[0]['labels'] = targets[0]['labels'][keep_target_indices]
+        else:
+            targets[0]['boxes'] = torch.empty((0, 4), dtype=boxes.dtype)
+            targets[0]['labels'] = torch.empty((0,), dtype=targets[0]['labels'].dtype)
 
-        evaluator_time = time.time()
-        if len(filtered_outputs)>=1 :
+        if len(filtered_outputs[0]["boxes"]) >= 5 :
 
             correctedLabels, correctedBoxes = filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]
             # apply postprocessing if needed
@@ -475,26 +490,47 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             prec,rec = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
             dS, invS = boxListEvaluationCentroids(correctedBoxes,targets[0]["boxes"])
             boxCoords = correctedBoxes
-            boxCatAndCoords = boxAndCatsToList(correctedLabels, correctedBoxes)
+            #boxCatAndCoords = boxAndCatsToList(correctedLabels, correctedBoxes)
+
+            boxCatAndCoords = []
+
+            # create a new list of tuples with category predictions to save to file
+            for el,tup in zip(correctedLabels, correctedBoxes):
+                # convert so they are not tensors
+                el = el.tolist()
+                tup = tuple(tup.tolist())
+                boxCatAndCoords.append((el,)+tup)
+
+            precList.append(prec)
+            recList.append(rec)
+            dScore.append(dS)
+            invScore.append(invS)
+            print("for image "+str(imageName)+" got "+str((prec,rec)))
+
+
+            # store image, predicted mask and box coords
+            predMask = maskFromBoxes(boxCoords,imToStore.shape)
+
+            cv2.imwrite( os.path.join(predFolder,imageName), imToStore*255 )
+            cv2.imwrite( os.path.join(predFolder,"PREDMASK"+imageName),predMask  )
+            boxCoordsToFile(os.path.join(predFolder,"BOXCOORDS"+imageName[:-4]+".txt"),boxCatAndCoords)
+
+            count+=1
+
 
         else:
-            prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
+            # ignore if there are no outputs unless there should be
+            if len(targets[0]['boxes']) >= 5:
+                prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
+                print("in this case I did not predict boxes and I should have "+str(len(targets[0]['boxes']))+" but i only had "+str(len(filtered_outputs[0]["boxes"])))
 
-        precList.append(prec)
-        recList.append(rec)
-        dScore.append(dS)
-        invScore.append(invS)
 
-        # store image, predicted mask and box coords
-        predMask = maskFromBoxes(boxCoords,imToStore.shape)
+                precList.append(prec)
+                recList.append(rec)
+                dScore.append(dS)
+                invScore.append(invS)
 
-        cv2.imwrite( os.path.join(predFolder,imageName), imToStore*255 )
-        cv2.imwrite( os.path.join(predFolder,"PREDMASK"+imageName),predMask  )
-        boxCoordsToFile(os.path.join(predFolder,"BOXCOORDS"+imageName[:-4]+".txt"),boxCatAndCoords)
 
-        evaluator_time = time.time() - evaluator_time
-        #print("time "+str(evaluator_time))
-        count+=1
 
     # now reconstruct the full images and masks from what we have in the folder
     for imageN,TileList  in dataset_test.getSliceFileInfo().items():
@@ -509,8 +545,8 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     print("average Precision (centroids) "+str(sum(dScore) / len(dScore)))
     print("average Recall (centroids) "+str(sum(invScore) / len(invScore)))
 
-    #print(precList)
-    #print(recList)
+    print(precList)
+    print(recList)
     print("average Precision (overlap) "+str(sum(precList) / len(precList)))
     print("average Recall (overlap) "+str(sum(recList) / len(recList)))
 

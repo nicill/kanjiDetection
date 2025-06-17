@@ -286,7 +286,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
         predConf = tParams["predconf"]
         start = time.time()
-        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, postProcess = 1, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams))  )
+        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, postProcess = 0, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams))  )
         end = time.time()
         testTime = end - start
 

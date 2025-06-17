@@ -801,6 +801,13 @@ def boxesFromMask(img, cl = 0, yoloFormat = True):
                 out.append((cl,x1,y1,x2,y2))
     return out
 
+def borderbox(box, width, height, border_fraction=0.05):
+    """
+    Return True if a box touches the border region defined by border_fraction.
+    """
+    bx, by = border_fraction * width, border_fraction * height
+    return (box[0] <= bx) or (box[2] >= width - bx) or (box[1] <= by) or (box[3] >= height - by)
+
 def sliceAndBox(im,mask,slice):
     """
     Given image and mask, slice them
