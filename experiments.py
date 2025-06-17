@@ -18,11 +18,11 @@ from datasets import ODDataset
 
 from config import read_config
 from predict import detectBlobsMSER,detectBlobsDOG
-from imageUtils import boxesFound,read_Binary_Mask,recoupMasks,color_to_gray
+from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
 from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel
 
 from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2
-from predict import predict_yolo, predict_pytorch, predict_pytorch_maskRCNN
+from predict import predict_yolo, predict_pytorch
 
 def makeParamDicts(pars,vals):
     """
@@ -259,8 +259,9 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],
-                                [["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
+    #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
+
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
     # predconf prediction confidence in testing
@@ -285,8 +286,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
         predConf = tParams["predconf"]
         start = time.time()
-        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams))  )
-        #prec,rec, oprec, orec = predict_pytorch_maskRCNN(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf) #debugging purposes
+        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, postProcess = 1, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams))  )
         end = time.time()
         testTime = end - start
 
@@ -294,8 +294,6 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
             f.write(str(v)+",")
         f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+","+str(trainTime)+","+str(testTime)+"\n")
         f.flush()
-
-    # there should be another loop for retina fcos
 
     f.close()
 

@@ -385,10 +385,26 @@ def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
     return prec,rec,sum(precList) / len(precList), sum(recList) / len(recList)
 
 @torch.no_grad()
-def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
+def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, predFolder):
     """
         Inference for pytorch object detectors
+        possible postprocess values, 0 for no postprocess
+        1 for only double box removal
+        2 for double box and grid filling
     """
+    def boxAndCatsToList(lab, boxes):
+        """
+            receive tensors with labels and categories an translate them to lists of boxes
+        """
+        retList =[]
+        # create a new list of tuples with category predictions to save to file
+        for el,tup in zip(lab, boxes):
+            # convert so they are not tensors
+            el = el.tolist()
+            tup = tuple(tup.tolist())
+            retList.append((el,)+tup)
+        return retList
+
     data_loader = torch.utils.data.DataLoader(
         dataset_test,
         batch_size=1,
@@ -448,24 +464,19 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
         evaluator_time = time.time()
         if len(filtered_outputs)>=1 :
 
+            correctedLabels, correctedBoxes = filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]
+            # apply postprocessing if needed
             # modify boxes and labels to eliminate boxes with too much overlap
-            correctedLabels, correctedBoxes = filter_boxes_by_overlap_and_area_distance(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"])
+            if postProcess > 0: correctedLabels, correctedBoxes = filter_boxes_by_overlap_and_area_distance(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"], 255*imToStore, os.path.join(predFolder,"removal"+imageName))
 
             # now try to fill holes in the grid
-            correctedLabels, correctedBoxes = fillHolesInGrid(correctedLabels, correctedBoxes, imToStore)
+            if postProcess > 1: correctedLabels, correctedBoxes = fillHolesInGrid(correctedLabels, correctedBoxes, imToStore, os.path.join(predFolder,"newBoxes"+imageName))
 
             prec,rec = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
             dS, invS = boxListEvaluationCentroids(correctedBoxes,targets[0]["boxes"])
             boxCoords = correctedBoxes
-            boxCatAndCoords = []
+            boxCatAndCoords = boxAndCatsToList(correctedLabels, correctedBoxes)
 
-
-            # create a new list of tuples with category predictions to save to file
-            for el,tup in zip(correctedLabels, correctedBoxes):
-                # convert so they are not tensors
-                el = el.tolist()
-                tup = tuple(tup.tolist())
-                boxCatAndCoords.append((el,)+tup)
         else:
             prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
 
@@ -502,6 +513,8 @@ def predict_pytorch(dataset_test, model, device, predConfidence, predFolder):
     #print(recList)
     print("average Precision (overlap) "+str(sum(precList) / len(precList)))
     print("average Recall (overlap) "+str(sum(recList) / len(recList)))
+
+    # trying to postprocess from the full image is inneficcient because there are too many boxes to check at the same time
 
     if sum(precList) / len(precList) >1: raise Exception("what is this shit?")
 
