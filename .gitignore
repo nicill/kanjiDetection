@@ -5,5 +5,10 @@ results
 noiseRedData
 __pycache__
 *.yaml
+*.pth
 *.pt
+*.png
+*.zip
+*.odt
+runs
 ideas

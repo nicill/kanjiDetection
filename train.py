@@ -32,7 +32,7 @@ def makeTrainYAML(conf, fileName = 'trainAUTO.yaml', pDict = {}):
     """
     Function to write a yaml file
     """
-    data = { "names": {0: 'Kanji'}, "path": conf["TV_dir"], "train": conf["Train_dir"],
+    data = { "names": {1: 'Kanji'}, "path": conf["TV_dir"], "train": conf["Train_dir"],
             "val": conf["Valid_dir"]}
     with open(fileName, 'w') as outfile:
         yaml.dump(data, outfile, default_flow_style=False)

@@ -15,7 +15,7 @@ from train import collate_fn
 from imageUtils import (
 boxListEvaluation, boxListEvaluationCentroids, boxesFound, precRecall, maskFromBoxes,
 rebuildImageFromTiles, boxCoordsToFile, filter_boxes_by_overlap_and_area_distance,
-fillHolesInGrid, borderbox
+fillHolesInGrid, borderbox, fileToBoxCoords
 )
 
 from torchvision.transforms.functional import to_pil_image
@@ -177,9 +177,10 @@ def predict_new_Set_yolo(conf):
 def predict_yolo(conf, prefix = 'combined_data_'):
 
     testPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"images")
-    maskPath =os.path.join(conf["TV_dir"],conf["Test_dir"],"masks")
+    #maskPath =os.path.join(conf["TV_dir"],conf["Test_dir"],"masks")
+    boxPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"labels")
     testImageList = testFileList(testPath)
-    modellist = conf["models"]
+    #modellist = conf["models"]
     predict_dir = conf["Pred_dir"]
 
     #print(testPath)
@@ -187,24 +188,38 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     Path(predict_dir).mkdir(parents=True, exist_ok=True)
     dScore = []
     invScore = []
-    ignoreCount = 0
+    #ignoreCount = 0
+    totalTP, totalFP, totalFN = 0, 0, 0 
     for imPath in testImageList:
-        print("predictYOLO, predicting "+imPath)
+        #print("predictYOLO, predicting "+imPath)
         currentmodel = prefix if len(conf["models"])<1 else conf["models"][0] # should get totally rid of conf["models"]
 
         modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
         #print("predictYOLO, model path "+str(modelpath))
 
-        detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8',
-                                                    model_path=modelpath,device=0)
+        detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8', model_path=modelpath,device=0)
         image = cv2.imread(imPath)
-        maskName = os.path.basename(imPath)[:-4]+"MASK.png"
+        gtBoxes = fileToBoxCoords(os.path.join(boxPath,os.path.basename(imPath)[:-4]+".txt"),returnCat = False)
 
         result = get_sliced_prediction(image,detectionModel,slice_height=512
         ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
         verbose = False )
+        predBoxes = [ p.bbox.to_xyxy() for p in result.object_prediction_list ] # change from the sahi prediction thing to a list of tuples (int this case, ignore category)
 
         boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
+
+        if len(gtBoxes) > 0:        
+            TP,FP,FN = boxListEvaluation(predBoxes,gtBoxes)
+            #update totals
+            totalTP += TP 
+            totalFP += FP 
+            totalFN += FN 
+            # at the moment not computing centroid based metrics for yolo
+            dS, invS = boxListEvaluationCentroids(predBoxes,gtBoxes)
+            dScore.append(dS)
+            invScore.append(invS)
+
+        """
         outMask = boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
 
         # evaluate
@@ -216,6 +231,8 @@ def predict_yolo(conf, prefix = 'combined_data_'):
         except:
             print("image with no boxes, ignoring "+str(ignoreCount))
             ignoreCount+=1
+        """
+            
 
         visualize_object_predictions(
             image=np.ascontiguousarray(result.image),
@@ -232,10 +249,16 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     # computations
     #print(invScore)
     #print(dScore)
-    prec, rec = precRecall(dScore, invScore)
-    print("At the end of the test precision and recall values where "+str(prec)+" and "+str(rec))
-    return prec,rec
+    
+    print("average Precision (centroids) "+str(sum(dScore) / len(dScore)))
+    print("average Recall (centroids) "+str(sum(invScore) / len(invScore)))
 
+    prec = totalTP/(totalTP+totalFP)
+    rec = totalTP/(totalTP+totalFN)
+    print("global Precision (overlap) "+str(prec))
+    print("global Recall (overlap) "+str(rec))
+
+    return sum(dScore) / len(dScore), sum(invScore) / len(invScore) , prec, rec
 
 @torch.no_grad()
 def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
@@ -432,6 +455,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     invScore = []
     ignoreCount = 0
 
+    totalTP, totalFP, totalFN = 0,0,0
     for ind, (images, targets) in enumerate(data_loader):
         imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
         imToStore = np.ascontiguousarray(images[0].permute(1, 2, 0))
@@ -464,7 +488,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             }
             filtered_outputs.append(filtered_output)
 
-        # filter out border boxes for targets targets
+        # filter out border boxes for targets 
         boxes = targets[0]['boxes']
         keep_target_indices = [
             i for i, box in enumerate(boxes) if not borderbox(box, width, height)
@@ -477,7 +501,8 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             targets[0]['boxes'] = torch.empty((0, 4), dtype=boxes.dtype)
             targets[0]['labels'] = torch.empty((0,), dtype=targets[0]['labels'].dtype)
 
-        if len(filtered_outputs[0]["boxes"]) >= 5 :
+        #if len(filtered_outputs[0]["boxes"]) >= 0 :
+        if len(targets[0]['boxes']) > 0: # ignore tiles without boxes
 
             correctedLabels, correctedBoxes = filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]
             # apply postprocessing if needed
@@ -487,7 +512,11 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             # now try to fill holes in the grid
             if postProcess > 1: correctedLabels, correctedBoxes = fillHolesInGrid(correctedLabels, correctedBoxes, imToStore, os.path.join(predFolder,"newBoxes"+imageName))
 
-            prec,rec = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
+            TP,FP,FN = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
+            #update totals
+            totalTP += TP 
+            totalFP += FP 
+            totalFN += FN 
             dS, invS = boxListEvaluationCentroids(correctedBoxes,targets[0]["boxes"])
             boxCoords = correctedBoxes
             #boxCatAndCoords = boxAndCatsToList(correctedLabels, correctedBoxes)
@@ -501,35 +530,40 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
                 tup = tuple(tup.tolist())
                 boxCatAndCoords.append((el,)+tup)
 
-            precList.append(prec)
-            recList.append(rec)
+            thisPrec = 0 if (TP+FP) == 0 else (TP/(TP+FP)) 
+            precList.append(thisPrec)
+            thisRec = 0 if (TP+FN) == 0 else (TP/(TP+FN))
+            recList.append(thisRec)
             dScore.append(dS)
             invScore.append(invS)
-            print("for image "+str(imageName)+" got "+str((prec,rec)))
-
+            #print("for image "+str(imageName)+" got "+str((prec,rec)))
 
             # store image, predicted mask and box coords
             predMask = maskFromBoxes(boxCoords,imToStore.shape)
-
-            cv2.imwrite( os.path.join(predFolder,imageName), imToStore*255 )
             cv2.imwrite( os.path.join(predFolder,"PREDMASK"+imageName),predMask  )
             boxCoordsToFile(os.path.join(predFolder,"BOXCOORDS"+imageName[:-4]+".txt"),boxCatAndCoords)
+
+            #if len(targets[0]['boxes']) >120:
+            #    cv2.imwrite( str(len(targets[0]['boxes']))+"boxes"+imageName, imToStore*255 )
+            #    boxCoordsToFile("BOXCOORDS"+imageName[:-4]+".txt",boxCatAndCoords)
 
             count+=1
 
 
-        else:
+        #else:
             # ignore if there are no outputs unless there should be
-            if len(targets[0]['boxes']) >= 5:
-                prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
-                print("in this case I did not predict boxes and I should have "+str(len(targets[0]['boxes']))+" but i only had "+str(len(filtered_outputs[0]["boxes"])))
+        #    if len(targets[0]['boxes']) >= 5:
+        #        prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
+        #        print("in this case I did not predict boxes and I should have "+str(len(targets[0]['boxes']))+" but i only had "+str(len(filtered_outputs[0]["boxes"])))
 
 
-                precList.append(prec)
-                recList.append(rec)
-                dScore.append(dS)
-                invScore.append(invS)
+        #        precList.append(prec)
+        #        recList.append(rec)
+        #        dScore.append(dS)
+        #        invScore.append(invS)
 
+        # always store the tile
+        cv2.imwrite( os.path.join(predFolder,imageName), imToStore*255 )
 
 
     # now reconstruct the full images and masks from what we have in the folder
@@ -551,7 +585,15 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     print("average Recall (overlap) "+str(sum(recList) / len(recList)))
 
     # trying to postprocess from the full image is inneficcient because there are too many boxes to check at the same time
-
     if sum(precList) / len(precList) >1: raise Exception("what is this shit?")
 
-    return sum(dScore) / len(dScore), sum(invScore) / len(invScore) ,sum(precList) / len(precList), sum(recList) / len(recList)
+    # compute global precision and recall
+    prec = 0 if (totalTP+totalFP) == 0 else totalTP/(totalTP+totalFP)
+    rec = 0 if (totalTP+totalFN) == 0 else totalTP/(totalTP+totalFN)
+    print("global Precision (overlap) "+str(prec))
+    print("global Recall (overlap) "+str(rec))
+
+
+    #return sum(dScore) / len(dScore), sum(invScore) / len(invScore) ,sum(precList) / len(precList), sum(recList) / len(recList)
+    return sum(dScore) / len(dScore), sum(invScore) / len(invScore) , prec, rec
+

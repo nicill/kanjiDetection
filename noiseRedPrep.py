@@ -184,6 +184,51 @@ def eraseSmall(maskI, areaTH = 250, its = 5, ws = 501):
             mask[labelIm == j] = 255
     return mask
 
+def eraseSmall2(maskI, areaTH = 250, its = 5, ws = 501):
+    """
+    Receive a binary image
+    erase regions that are small than the threshold
+    """
+    # copy not to destroy input
+    mask = maskI.copy()
+    _, mask = cv2.threshold(mask, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    numLabels, labelIm, stats, centroids = cv2.connectedComponentsWithStats(255-mask)
+
+   # Coordenades de tots els centres
+    all_centroids = np.array(centroids[1:])  # saltem fons
+
+    for j in range(1, numLabels):
+        area = stats[j][cv2.CC_STAT_AREA]
+        w = stats[j][cv2.CC_STAT_WIDTH]
+        h = stats[j][cv2.CC_STAT_HEIGHT]
+        aspect_ratio = max(w / h, h / w)
+
+        cx, cy = centroids[j]
+
+        # Criteris d'eliminació
+        eliminate = False
+
+        # 1. Massa petit
+        if area < areaTH:
+            eliminate = True
+
+        # 2. Massa allargat (probablement forma part d'una línia)
+        elif aspect_ratio > 4:
+            eliminate = True
+
+        # 3. Massa aïllat (distància mínima a altres centres)
+        #else:
+            #dists = np.linalg.norm(all_centroids - np.array([cx, cy]), axis=1)
+            #dists = np.delete(dists, j - 1)  # elimina distància a si mateix
+            #if len(dists) > 0 and np.min(dists) > 150:
+                #eliminate = True
+
+        if eliminate:
+            mask[labelIm == j] = 255  # pinta de blanc
+
+    return mask
+
 def detectLines(gray, kWidth = 1, ratioLines = 50):
     """
         Function to extract vertical and horizontal lines 
@@ -226,13 +271,98 @@ def detectLines(gray, kWidth = 1, ratioLines = 50):
     retVal[edges== 255] = 255
     return retVal
 
+def detectLines2(gray, kWidth = 1, ratioLines = 25):
+    """
+        Function to extract vertical and horizontal lines
+        using morphological operators
+    """
+
+    # Aplica un filtre per reduir textura del paper i transparències
+    #blurred = cv2.bilateralFilter(gray, d=9, sigmaColor=75, sigmaSpace=75)
+
+    _, bw = cv2.threshold(255-gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Create the images that will use to extract the horizontal and vertical lines
+    processingV = np.copy(bw)
+    processingH = np.copy(bw)
+
+    # Specify sizes
+    rows, columns = processingV.shape
+    vSize = rows // ratioLines
+    hSize = columns // ratioLines
+
+    # structure elements for extracting vertical and horizontal lines through morphology operations
+    vStruct = cv2.getStructuringElement(cv2.MORPH_RECT, (kWidth, vSize))
+    hStruct = cv2.getStructuringElement(cv2.MORPH_RECT, (hSize, kWidth))
+
+    # Apply morphology operations
+    #vertical lines
+    processingV = cv2.erode(processingV, vStruct)
+    processingV = cv2.dilate(processingV, vStruct)
+    #horizontal lines
+    processingH = cv2.erode(processingH, hStruct)
+    processingH = cv2.dilate(processingH, hStruct)
+
+    # Invert resutl images and gather results in a single image
+    processing = 255 - processingV
+    processing[processingH == 255] = 0
+
+    # Step 1
+    edges = cv2.adaptiveThreshold(processing, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 3, -2)
+
+    # Step 2
+    kernel = np.ones((35, 35), np.uint8)
+    edges = cv2.dilate(edges, kernel)
+
+    # Show final result
+    retVal = 255 - gray
+    retVal[edges== 255] = 255
+
+    bw = cv2.adaptiveThreshold(255-gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2)
+    processingV = np.copy(bw)
+    processingH = np.copy(bw)
+
+    # Specify sizes
+    rows, columns = processingV.shape
+    vSize = rows // ratioLines
+    hSize = columns // (ratioLines+10)
+
+    #print(vSize)
+    #print(hSize)
+
+    # structure elements for extracting vertical and horizontal lines through morphology operations
+    vStruct = cv2.getStructuringElement(cv2.MORPH_RECT, (kWidth, vSize))
+    hStruct = cv2.getStructuringElement(cv2.MORPH_RECT, (hSize, kWidth))
+
+    # Apply morphology operations
+    #vertical lines
+    processingV = cv2.erode(processingV, vStruct)
+    processingV = cv2.dilate(processingV, vStruct)
+    #horizontal lines
+    processingH = cv2.erode(processingH, hStruct)
+    processingH = cv2.dilate(processingH, hStruct)
+
+    # Invert resutl images and gather results in a single image
+    processing = 255 - processingV
+    processing[processingH == 255] = 0
+
+    # Step 1
+    edges2 = cv2.adaptiveThreshold(processing, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 3, -2)
+    # Step 2
+    kernel = np.ones((35, 35), np.uint8)
+    edges2 = cv2.dilate(edges2, kernel)
+
+    # Show final result
+    retVal2 = 255 - gray
+    retVal2[edges== 255] = 255
+
+    return cv2.bitwise_or(edges, edges2)
+
+
+
+
+"""
 def reduceNoiseSakuma2(im, eroSize = 3, eroIts = 1, kW =1, rL = 50, areaTH = 250, smallRIts = 3, grayTH = 150):
-    """
-    Receives a grayscale image and reduces 
-    noise according to the procedure described in
-    https://www.mdpi.com/2076-3417/11/17/8050
-    modified to include sauvola thresholding
-    """
     # step 1, bring up the kanji with erosion 
     size = eroSize
     its = eroIts
@@ -250,6 +380,34 @@ def reduceNoiseSakuma2(im, eroSize = 3, eroIts = 1, kW =1, rL = 50, areaTH = 250
     # step 7 HARD global thresholding to erase gray
     final = masked2.copy()
     final[masked2<grayTH] = 0 
+    final[masked2>=grayTH] = 255
+    return final
+"""
+
+def reduceNoiseSakuma2(im, eroSize = 5, eroIts = 3, kW =1, rL = 20, areaTH = 500, smallRIts=3, grayTH = 150):
+    """
+    Receives a grayscale image and reduces
+    noise according to the procedure described in
+    https://www.mdpi.com/2076-3417/11/17/8050
+    modified to include sauvola thresholding
+    """
+    # step 1, bring up the kanji with erosion
+    size = eroSize
+    its = eroIts
+    clearerKanji = enhanceBlackCharacters(im,size,its)
+    #step 2, function to erase linear structures
+    noLines = detectLines2(clearerKanji, kWidth = kW, ratioLines = rL)
+    # step 3, mask original image with the line removed image
+    masked = maskImage(im,noLines)
+    # step 4, bring up the kanji again with second erosion
+    clearerKanji2 = enhanceBlackCharacters(masked,size,its)
+    # Step 5, clean up small noise regions, includes binarization
+    smallRegionErased = eraseSmall2(clearerKanji2, areaTH = areaTH, its = smallRIts)
+    # step 6, mask again
+    masked2 = maskImage(masked, smallRegionErased)
+    # step 7 HARD global thresholding to erase gray
+    final = masked2.copy()
+    final[masked2<grayTH] = 0
     final[masked2>=grayTH] = 255
     return final
 

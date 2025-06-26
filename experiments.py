@@ -205,14 +205,14 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
         # Now test comes from another source
         # careful, this contains a hardcoded resampling factor!
-        buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"],denoised= True)
+        buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"],denoised = True)
 
-    f = open(conf["outTEXT"][:-4]+"YOLO"+conf["outTEXT"][-4:],"w+")
+    f = open(conf["outTEXT"][:-4]+"SUMMARY"+conf["outTEXT"][-4:],"a+")
     print("consider YOLO? "+str(doYolo))
     # start YOLO experiment
     # Yolo Params is a list of dictionaries with all possible parameters
     yoloParams = makeParamDicts(["scale", "mosaic"],
-                                [[0.5,0.9],[0.0,1.0]]) if doYolo else []
+                                [[0.5],[1.0]]) if doYolo else []
     # Print first line of results file
     if yoloParams != []:
         for k in yoloParams[0].keys():
@@ -226,7 +226,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
         makeTrainYAML(conf,yamlTrainFile,params)
 
         start = time.time()
-        if conf["Train"]:
+        if conf["Train"]: # this should be done by checking if the file already exists.
             train_YOLO(conf, yamlTrainFile, prefix)
         end = time.time()
         trainTime = end - start
@@ -234,19 +234,19 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
         # Test this version of the YOLO Network
         print("TESTING YOLO!!!!!!!!!!!!!!!!!")
         start = time.time()
-        prec,rec = predict_yolo(conf,prefix+"epochs"+str(conf["ep"])+'ex' )
+        prec,rec, oprec, orec = predict_yolo(conf,prefix+"epochs"+str(conf["ep"])+'ex' )
         end = time.time()
         testTime = end - start
         for k,v in params.items():
             f.write(str(v)+",")
-        f.write(str(prec)+","+str(rec)+","+str(trainTime)+","+str(testTime)+"\n")
+        f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+","+str(trainTime)+","+str(testTime)+"\n")
         f.flush()
 
     f.close()
 
     doPytorchModels = True
     print("consider pytorch models? "+str(doPytorchModels))
-    f = open(conf["outTEXT"][:-4]+"FRCNN"+conf["outTEXT"][-4:],"w+")
+    f = open(conf["outTEXT"][:-4]+"SUMMARY"+conf["outTEXT"][-4:],"a+")
 
     # our dataset has two classes only - background and Kanji
     num_classes = 2
@@ -259,8 +259,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
 
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
@@ -273,12 +272,13 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     # this should be for faster rcnn mask rcnn
     for tParams in frcnnParams:
+        print("testing params "+str(tParams))
         filePath = "exp"+paramsDictToString(tParams)+"fasterrcnn_resnet50_fpn.pth"
 
         my_file = Path("/path/to/file")
         trainAgain = not Path(filePath).is_file()
         start = time.time()
-        if conf["Train"]:
+        if conf["Train"] or not trainAgain:
             pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
                                         num_epochs = conf["ep"], trainAgain=trainAgain, proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
         end = time.time()
@@ -314,4 +314,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf,doYolo=False,doPytorchModels=True)
+    DLExperiment(conf,doYolo=True,doPytorchModels=True)

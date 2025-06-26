@@ -283,7 +283,7 @@ def boxesFound(im1, im2, percentage = True, verbose = False):
 def boxListEvaluation(bPred, bGT,th = 0.5):
     """
         receives two lists of boxes (predicted and ground truth)
-        in x1,y1,x2,y2 format and outputs precision, recall,
+        in x1,y1,x2,y2 format and outputs number of TP, FP, FN
         in terms of overlap percentage
     """
     def isTrueP(b,gtB):
@@ -333,24 +333,18 @@ def boxListEvaluation(bPred, bGT,th = 0.5):
 
     # Dictionary that contains the boxes in the ground truth that have been overlapped by a predicted box
     tpDict = {}
-    #num_tp = 0
     for box in bPred:
         isTrueP(box,bGT) # this function already updates the tpDict
-    num_tp = len(tpDict.keys())
-
-    tpDict = {}
-    for box in bGT:
-        isTrueP(box,bPred) # this function already updates the tpDict
-    num_tpRECALL = len(tpDict.keys())
-
+    TP = len(tpDict.keys()) # we consider the number of true positives to be the number of ground truth boxes caught by predictions, any box caught more than once is only counted once
+    FP = len(bPred) - TP # We consider a false positive to be either a box that misses the ground truth or repeats it
+    FN = len(bGT) - TP # any missed box is a false negative
 
     #print(tpDict)
     #print("found TP "+str(num_tp)+" of predictions "+str(len(bPred))+" and real objects "+str(len(bGT)))
-    recall = num_tpRECALL/len(bGT) if len(bGT) > 0 else 0
-    precision = num_tp/len(bPred) if len(bPred) > 0 else 0
-    #print("returning "+str(precision)+" "+str(recall))
-
-    return precision,recall
+    #recall = num_tpRECALL/len(bGT) if len(bGT) > 0 else 0
+    #precision = num_tp/len(bPred) if len(bPred) > 0 else 0
+    #print("boxlistEval found "+str(TP)+" missed "+str(FN))
+    return TP, FP, FN
 
 def boxListEvaluationCentroids(bPred, bGT):
     """
@@ -444,8 +438,9 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
     # Get final image dimensions
     full_width, full_height = get_original_image_size(TileList, predFolder)
 
-    # Prepare black canvas
-    stitched_image = np.zeros((full_height, full_width, 3), dtype=np.uint8)
+    # Prepare white canvas
+    #stitched_image = np.zeros((full_height, full_width, 3), dtype=np.uint8)
+    stitched_image = np.full((full_height, full_width, 3), 255, dtype=np.uint8)
     stitched_mask = np.ones((full_height, full_width), dtype=np.uint8)
     stitched_mask = stitched_mask*255
 
@@ -470,19 +465,17 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
 
         # make sure to overlap all mask predictions
         stitched_maskAUX = np.ones((full_height, full_width), dtype=np.uint8)
-        stitched_maskAUX[y:y+h, x:x+w] = tileMask
+        if tileMask is not None: stitched_maskAUX[y:y+h, x:x+w] = tileMask
         stitched_mask[ stitched_maskAUX == 0 ] = 0
-        #stitched_mask[y:y+h, x:x+w] = tileMask
 
-        # also read box coords
-        with open(os.path.join(predFolder, "BOXCOORDS"+fname[:-4]+".txt")) as f:
-            for line in f.readlines():
-                c,px1,py1,px2,py2 = tuple(line.strip().split(" "))
-                newP1 = (int(float(px1) + float(x)), int(float(py1) + float(y)))
-                newP2 = (int(float(px2) + float(x)), int(float(py2) + float(y)))
-                boxCoords.append((c,str(newP1[0]),str(newP1[1]),str(newP2[0]),str(newP2[1])))
-
-        # now that we are here, we should create the stitched image of images with highlighted rectangle boxes
+        # also read box coords if we have them
+        if tileMask is not None:
+            with open(os.path.join(predFolder, "BOXCOORDS"+fname[:-4]+".txt")) as f:
+                for line in f.readlines():
+                    c,px1,py1,px2,py2 = tuple(line.strip().split(" "))
+                    newP1 = (int(float(px1) + float(x)), int(float(py1) + float(y)))
+                    newP2 = (int(float(px2) + float(x)), int(float(py2) + float(y)))
+                    boxCoords.append((c,str(newP1[0]),str(newP1[1]),str(newP2[0]),str(newP2[1])))
 
     # write to disk (image, mask, bounding box file)
     cv2.imwrite(os.path.join(predFolder,"FULL",imageN),stitched_image )
@@ -756,7 +749,7 @@ def maskFromBoxes(boxes, image_size):
     return 255-mask
 
 
-def boxesFromMask(img, cl = 0, yoloFormat = True):
+def boxesFromMask(img, cl = 1, yoloFormat = True):
     """
     Return a list of box coordinates
     From a binary image
@@ -823,7 +816,7 @@ def sliceAndBox(im,mask,slice):
         maskW = mask[y:y + wSize[1], x:x + wSize[0]]
         # The mask was already binarized
         # compute box coords
-        coords = boxesFromMask(maskW)
+        coords = boxesFromMask(maskW,yoloFormat = False)
         # add window, mask window and boxlist
         out.append(("x"+str(x)+"y"+str(y),window,maskW,coords))
     return out
@@ -841,6 +834,19 @@ def boxCoordsToFile(file,boxC):
 
     with open(file, 'a') as f:
         list(map( writeTuple, boxC))
+
+def fileToBoxCoords(file, returnCat=False):
+    """
+    Reads bounding boxes from a file.
+    If returnCat=True: returns (c, px, py, w, h)
+    If returnCat=False: returns (px, py, w, h)
+    """
+    with open(file, 'r') as f:
+        if returnCat:
+            return [tuple(map(float, line.strip().split())) for line in f if line.strip()]
+        else:
+            return [tuple(map(float, line.strip().split()[1:])) for line in f if line.strip()]
+
 
 if __name__ == "__main__":
     #color = True
