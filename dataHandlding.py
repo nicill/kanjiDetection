@@ -10,6 +10,7 @@ from random import randint,uniform
 import shutil
 from pathlib import Path
 from patch_classification import loadModelReadClassDict,testAndOutputForAnnotations
+import numpy as np
 
 def predictionsToKanjiImages(im,mask,path,imCode,storeContext=False):
     """
@@ -214,6 +215,72 @@ def buildTestingFromSingleFolderSakuma2(inFolder, outTest,  slice, denoised = Tr
                 # store results (make up names)
                 for suffix,i,m,l in sIML:
                     newFileName = f[2:-6]+suffix
+
+                    outDir = outTest
+                    # store files including text file
+                    cv2.imwrite(os.path.join(outDir,"images",newFileName+".png"),i)
+                    cv2.imwrite(os.path.join(outDir,"masks",newFileName+"MASK.png"),m)
+                    boxCoordsToFile(os.path.join(outDir,"labels",newFileName+".txt"),l)
+
+def buildTestingFromSingleFolderSakuma2NOGT(inFolder, outTest,  slice, denoised = True):
+    """
+        Receive one folder in sakuma2 format, traverse all images
+        create new empty ground truth masks a testing set with image and mask subfolders
+        either with denoised or non denoised data
+        careful, contains a hardcoded resampling factor! so the sizes
+        of Kanji are the same as for the sakuma 1 database
+
+    """
+    def makeDummyMask(shape):
+        """
+            given an image shape, create a dummy mask with 5 randomly placed 
+        """
+        img = np.full(shape, 255, np.uint8)
+        for _ in range(5):
+            s = randint(10, min(shape)//5)
+            x, y = randint(0, shape[1]-s), randint(0, shape[0]-s)
+            cv2.rectangle(img, (x, y), (x+s, y+s), 0, -1)
+        return img
+
+    dirList = [os.path.join(outTest,"images"), os.path.join(outTest,"masks"), os.path.join(outTest,"labels")]
+    for d in dirList:
+        Path(d).mkdir(parents=True, exist_ok=True)
+        print("making "+str(d))
+
+
+    for dirpath, dnames, fnames in os.walk(inFolder):
+        for f in fnames:
+            process = ("denoised" in f) if denoised else not ("denoised" in f)
+            if process: 
+                # read image and create dummy mask (in this function we do not have ground truth), everyone is binary
+                #print("reading "+str(os.path.join(inFolder,f)))
+
+                imageName = f
+                im = read_Binary_Mask(os.path.join(inFolder,imageName)) if denoised else color_to_gray(read_Color_Image(os.path.join(inFolder,imageName)) )
+
+                mask = makeDummyMask(im.shape)
+
+                # Masks are not the perfect size, reshape
+                mask = cv2.resize(mask, (im.shape[1],im.shape[0]))
+
+                # reshape so that the size fits that of Sakuma1
+                factor = 0.45
+                mask = cv2.resize(mask, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
+                im = cv2.resize(im, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
+
+
+                # binarize mask
+                mask[mask<10] = 0
+                mask[mask>10] = 255
+
+                # call slice and box
+                sIML = sliceAndBox(im,mask,slice)
+
+                # store results (make up names)
+                for suffix,i,m,l in sIML:
+                    newFileName = f[2:-6]+suffix
+
+                    #print(newFileName)
 
                     outDir = outTest
                     # store files including text file

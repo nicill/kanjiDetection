@@ -181,6 +181,7 @@ class ODDataset(Dataset):
 
                 #check if the image already has the right size.
                 if preSliced:
+                    #print("Dataset: processing "+str(f))
                     # images should already have the right size
                     if im.shape[0] > slice or im.shape[1] > slice:raise Exception("ODDAtaset creator, wrongly presliced images")
                     # no need to slice, but the images are tiles that come from other images, need to store this in self.slicesToImages[
@@ -188,14 +189,14 @@ class ODDataset(Dataset):
                     cleanUpMask(mask, areaTH = 100)
                     mask = cleanUpMaskBlackPixels(mask, im, areaTH = 100 )
 
-                    if np.sum(mask==0) > 100: #avoid empty masks
-                        # store them both
-                        self.imageNameList.append( os.path.join(self.imageFolder,imageName) )
-                        self.maskNameList.append( os.path.join(self.maskFolder,f) )
+                    #if np.sum(mask==0) > 100: #avoid empty masks
+                    # store them both, always
+                    self.imageNameList.append( os.path.join(self.imageFolder,imageName) )
+                    self.maskNameList.append( os.path.join(self.maskFolder,f) )
 
-                        # this was previously slice, the image name will be anything before the last "x" plus the file extension    
+                    # this was previously slice, the image name will be anything before the last "x" plus the file extension    
 
-                        self.slicesToImages[ imageName[:imageName.rfind("x")]+imageName[-4:]].append(imageName)
+                    self.slicesToImages[ imageName[:imageName.rfind("x")]+imageName[-4:]].append(imageName)
 
                 else:
                     # slice mask and image together, store them in the forOD folder
@@ -208,9 +209,10 @@ class ODDataset(Dataset):
                             # this should be done better, with padding!, maybe https://docs.opencv.org/3.4/dc/da3/tutorial_copyMakeBorder.html
                             maskW = mask[y:y + wSize[1], x:x + wSize[0]]
                             # discard empty masks
-                            cleanUpMask(maskW)
+                            #cleanUpMask(maskW)
                             # here we should probably add cleanUpMaskBlackPixels and maybe do it for YOLO too (in buildtrainvalidation?)
-                            if np.sum(maskW==0) > 100:
+                            #if np.sum(maskW==0) > 100:
+                            if True:
                                 # store them both
                                 cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
                                 self.imageNameList.append( os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png") )
@@ -221,6 +223,8 @@ class ODDataset(Dataset):
 
                                 count+=1
         #print(self.slicesToImages)
+        #for k,v in self.slicesToImages.items():
+        #    print(str(k)+" "+str(len(v)))
         #print(len(self.slicesToImages))
     
     def __getitem__(self, idx):
@@ -269,7 +273,7 @@ class ODDataset(Dataset):
         img = tv_tensors.Image(img)
 
         target = {}
-        target["boxes"] = tv_tensors.BoundingBoxes(torch.as_tensor(boxes), format="XYXY", canvas_size=F.get_size(img))
+        target["boxes"] = [] if len(boxes)==0 else tv_tensors.BoundingBoxes(torch.as_tensor(boxes), format="XYXY", canvas_size=F.get_size(img))
         target["masks"] = tv_tensors.Mask( masks )
         target["labels"] = torch.as_tensor(labels)
 

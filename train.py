@@ -57,9 +57,15 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     scVal = 0.5 if "scale" not in params else params["scale"]
     mosVal = 1.0 if "mosaic" not in params else params["mosaic"]
 
-    results = model.train(data=datasrc, epochs=epochs, imgsz=imgsize,
-                name=name,device=0, patience = 10, exist_ok = True,
-                scale = scVal, mosaic = mosVal)
+    overrides = {'data': datasrc, 'epochs': epochs, 'imgsz': imgsize, 'name': name, 'device': 0,
+    'patience': 10,'exist_ok': True, 'scale': scVal, 'mosaic': mosVal}
+
+    # this change has not been tested!
+    results = model.train(**overrides)
+
+    #results = model.train(data=datasrc, epochs=epochs, imgsz=imgsize,
+    #            name=name,device=0, patience = 10, exist_ok = True,
+    #            scale = scVal, mosaic = mosVal)
     results = model.val(project=resfolder,name=valfolder,save_json=True)
 
     with open(resultstxt,'w+') as res:

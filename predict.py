@@ -490,7 +490,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
         # filter out border boxes for targets 
         boxes = targets[0]['boxes']
-        keep_target_indices = [
+        keep_target_indices = [] if len(boxes) == 0 else [
             i for i, box in enumerate(boxes) if not borderbox(box, width, height)
         ]
         if keep_target_indices:
@@ -498,11 +498,12 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             targets[0]['boxes'] = boxes[keep_target_indices]
             targets[0]['labels'] = targets[0]['labels'][keep_target_indices]
         else:
-            targets[0]['boxes'] = torch.empty((0, 4), dtype=boxes.dtype)
+            targets[0]['boxes'] = torch.empty((0, 4), dtype=torch.float32)
             targets[0]['labels'] = torch.empty((0,), dtype=targets[0]['labels'].dtype)
 
         #if len(filtered_outputs[0]["boxes"]) >= 0 :
-        if len(targets[0]['boxes']) > 0: # ignore tiles without boxes
+        #if len(targets[0]['boxes']) > 0: # ignore tiles without boxes
+        if True:
 
             correctedLabels, correctedBoxes = filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]
             # apply postprocessing if needed

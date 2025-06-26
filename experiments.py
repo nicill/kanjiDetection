@@ -21,7 +21,7 @@ from predict import detectBlobsMSER,detectBlobsDOG
 from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
 from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel
 
-from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2
+from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2, buildTestingFromSingleFolderSakuma2NOGT
 from predict import predict_yolo, predict_pytorch
 
 def makeParamDicts(pars,vals):
@@ -206,6 +206,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
         # Now test comes from another source
         # careful, this contains a hardcoded resampling factor!
         buildTestingFromSingleFolderSakuma2(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"],denoised = True)
+        #buildTestingFromSingleFolderSakuma2NOGT(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"],denoised = True)
 
     f = open(conf["outTEXT"][:-4]+"SUMMARY"+conf["outTEXT"][-4:],"a+")
     print("consider YOLO? "+str(doYolo))
@@ -255,11 +256,13 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("creating dataset in experiment")
     dataset = ODDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
+    print("\n\n\n now for the testing")
     dataset_test = ODDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform())
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
+    #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
 
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
@@ -314,4 +317,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf,doYolo=True,doPytorchModels=True)
+    DLExperiment(conf, doYolo = True , doPytorchModels = False)

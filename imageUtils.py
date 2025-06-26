@@ -478,8 +478,13 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
                     boxCoords.append((c,str(newP1[0]),str(newP1[1]),str(newP2[0]),str(newP2[1])))
 
     # write to disk (image, mask, bounding box file)
-    cv2.imwrite(os.path.join(predFolder,"FULL",imageN),stitched_image )
-    cv2.imwrite(os.path.join(predFolder,"FULL","PREDMASK"+imageN),stitched_mask )
+    cv2.imwrite(os.path.join(predFolder,"FULL",imageN), stitched_image )
+    cv2.imwrite(os.path.join(predFolder,"FULL","PREDMASK"+imageN), stitched_mask )
+
+    #also Reshape the mask to predefined size
+    reshapedMask =  cv2.resize(stitched_mask, (9922,7012), interpolation=cv2.INTER_NEAREST)
+    cv2.imwrite(os.path.join(predFolder,"FULL","BIGMASK"+imageN), reshapedMask )
+
     boxCoordsToFile(os.path.join(predFolder,"FULL","BOXCOORDS"+imageN[:-4]+".txt"),boxCoords)
     # also, make a pretty image of the original image with boxes and categories
     cv2.imwrite(os.path.join(predFolder,"FULL","Pretty"+imageN), prettyImage(boxCoords,stitched_image) )
