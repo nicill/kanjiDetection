@@ -12,7 +12,7 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from torchvision.transforms import v2 as T
 
 from torchvision.models.detection.ssd import SSDClassificationHead
-from torchvision.models.detection import _utils
+from torchvision.models.detection import _utils, MaskRCNN
 from torchvision.models.detection import SSD300_VGG16_Weights
 
 from functools import partial
@@ -32,7 +32,7 @@ def makeTrainYAML(conf, fileName = 'trainAUTO.yaml', pDict = {}):
     """
     Function to write a yaml file
     """
-    data = { "names": {1: 'Kanji'}, "path": conf["TV_dir"], "train": conf["Train_dir"],
+    data = { "names": {0: 'Kanji'}, "path": conf["TV_dir"], "train": conf["Train_dir"],
             "val": conf["Valid_dir"]}
     with open(fileName, 'w') as outfile:
         yaml.dump(data, outfile, default_flow_style=False)
@@ -67,9 +67,8 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     #            name=name,device=0, patience = 10, exist_ok = True,
     #            scale = scVal, mosaic = mosVal)
     results = model.val(project=resfolder,name=valfolder,save_json=True)
-
-    with open(resultstxt,'w+') as res:
-        res.write(str(results))
+    # fuck it, not writing the results to disk
+ 
 
 def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
                         trainAgain = False, proportion = 0.9, mType = "maskrcnn",
@@ -141,6 +140,9 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
                 hidden_layer,
                 num_classes
             )
+
+
+            
 
         elif mType == "fasterrcnn":
             model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights="DEFAULT")
@@ -275,7 +277,6 @@ def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
             hidden_layer,
             num_classes
         )
-
     elif mType == "fasterrcnn":
         model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights="DEFAULT")
 

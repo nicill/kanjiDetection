@@ -212,8 +212,8 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     print("consider YOLO? "+str(doYolo))
     # start YOLO experiment
     # Yolo Params is a list of dictionaries with all possible parameters
-    yoloParams = makeParamDicts(["scale", "mosaic"],
-                                [[0.5],[1.0]]) if doYolo else []
+    yoloParams = makeParamDicts(["scale", "mosaic"],[[0.0,0.5,1.0],[0.0,0.5,1.0]]) if doYolo else []
+    
     # Print first line of results file
     if yoloParams != []:
         for k in yoloParams[0].keys():
@@ -245,7 +245,6 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     f.close()
 
-    doPytorchModels = True
     print("consider pytorch models? "+str(doPytorchModels))
     f = open(conf["outTEXT"][:-4]+"SUMMARY"+conf["outTEXT"][-4:],"a+")
 
@@ -256,13 +255,12 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("creating dataset in experiment")
     dataset = ODDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
-    print("\n\n\n now for the testing")
     dataset_test = ODDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform())
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25, 0.5],[0.25,0.5],[0.7,0.95]]) if doPytorchModels else []
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.1, 0.2, 0.25],[0.5,0.75],[0.5,0.7,0.85]]) if doPytorchModels else []
+    #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
 
     # score: Increase to filter out low-confidence boxes (default ~0.05)
     # nms: Reduce to suppress more overlapping boxes (default ~0.5)
@@ -317,4 +315,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf, doYolo = True , doPytorchModels = False)
+    DLExperiment(conf, doYolo = False , doPytorchModels = True)

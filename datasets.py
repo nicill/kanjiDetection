@@ -273,7 +273,12 @@ class ODDataset(Dataset):
         img = tv_tensors.Image(img)
 
         target = {}
-        target["boxes"] = [] if len(boxes)==0 else tv_tensors.BoundingBoxes(torch.as_tensor(boxes), format="XYXY", canvas_size=F.get_size(img))
+        #target["boxes"] = [] if len(boxes)==0 else tv_tensors.BoundingBoxes(torch.as_tensor(boxes), format="XYXY", canvas_size=F.get_size(img))
+        target["boxes"] = tv_tensors.BoundingBoxes(
+            torch.as_tensor(boxes).reshape(-1, 4),  # handles both empty and non-empty
+            format="XYXY",
+            canvas_size=F.get_size(img)
+        )
         target["masks"] = tv_tensors.Mask( masks )
         target["labels"] = torch.as_tensor(labels)
 

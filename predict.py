@@ -213,11 +213,18 @@ def predict_yolo(conf, prefix = 'combined_data_'):
             #update totals
             totalTP += TP 
             totalFP += FP 
-            totalFN += FN 
+            totalFN += FN
+
+            #print("\n\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ there were "+str(len(gtBoxes)))
+            #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ TP,FP,FN "+str((TP,FP,FN)))
+            
+
             # at the moment not computing centroid based metrics for yolo
             dS, invS = boxListEvaluationCentroids(predBoxes,gtBoxes)
             dScore.append(dS)
             invScore.append(invS)
+        else:
+            print("predict_yolo found a GT tile wihtout boxes")
 
         """
         outMask = boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
@@ -253,8 +260,9 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     print("average Precision (centroids) "+str(sum(dScore) / len(dScore)))
     print("average Recall (centroids) "+str(sum(invScore) / len(invScore)))
 
-    prec = totalTP/(totalTP+totalFP)
-    rec = totalTP/(totalTP+totalFN)
+    prec = 0 if (totalTP+totalFP) == 0 else totalTP/(totalTP+totalFP)
+    rec = 0 if (totalTP+totalFN) == 0 else totalTP/(totalTP+totalFN)
+
     print("global Precision (overlap) "+str(prec))
     print("global Recall (overlap) "+str(rec))
 
