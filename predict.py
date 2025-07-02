@@ -189,7 +189,7 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     dScore = []
     invScore = []
     #ignoreCount = 0
-    totalTP, totalFP, totalFN = 0, 0, 0 
+    totalTP, totalFP, totalFN = 0, 0, 0
     for imPath in testImageList:
         #print("predictYOLO, predicting "+imPath)
         currentmodel = prefix if len(conf["models"])<1 else conf["models"][0] # should get totally rid of conf["models"]
@@ -208,16 +208,16 @@ def predict_yolo(conf, prefix = 'combined_data_'):
 
         boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
 
-        if len(gtBoxes) > 0:        
+        if len(gtBoxes) > 0:
             TP,FP,FN = boxListEvaluation(predBoxes,gtBoxes)
             #update totals
-            totalTP += TP 
-            totalFP += FP 
+            totalTP += TP
+            totalFP += FP
             totalFN += FN
 
             #print("\n\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ there were "+str(len(gtBoxes)))
             #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ TP,FP,FN "+str((TP,FP,FN)))
-            
+
 
             # at the moment not computing centroid based metrics for yolo
             dS, invS = boxListEvaluationCentroids(predBoxes,gtBoxes)
@@ -239,7 +239,7 @@ def predict_yolo(conf, prefix = 'combined_data_'):
             print("image with no boxes, ignoring "+str(ignoreCount))
             ignoreCount+=1
         """
-            
+
 
         visualize_object_predictions(
             image=np.ascontiguousarray(result.image),
@@ -256,7 +256,7 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     # computations
     #print(invScore)
     #print(dScore)
-    
+
     print("average Precision (centroids) "+str(sum(dScore) / len(dScore)))
     print("average Recall (centroids) "+str(sum(invScore) / len(invScore)))
 
@@ -496,7 +496,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             }
             filtered_outputs.append(filtered_output)
 
-        # filter out border boxes for targets 
+        # filter out border boxes for targets
         boxes = targets[0]['boxes']
         keep_target_indices = [] if len(boxes) == 0 else [
             i for i, box in enumerate(boxes) if not borderbox(box, width, height)
@@ -523,9 +523,9 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
             TP,FP,FN = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
             #update totals
-            totalTP += TP 
-            totalFP += FP 
-            totalFN += FN 
+            totalTP += TP
+            totalFP += FP
+            totalFN += FN
             dS, invS = boxListEvaluationCentroids(correctedBoxes,targets[0]["boxes"])
             boxCoords = correctedBoxes
             #boxCatAndCoords = boxAndCatsToList(correctedLabels, correctedBoxes)
@@ -539,7 +539,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
                 tup = tuple(tup.tolist())
                 boxCatAndCoords.append((el,)+tup)
 
-            thisPrec = 0 if (TP+FP) == 0 else (TP/(TP+FP)) 
+            thisPrec = 0 if (TP+FP) == 0 else (TP/(TP+FP))
             precList.append(thisPrec)
             thisRec = 0 if (TP+FN) == 0 else (TP/(TP+FN))
             recList.append(thisRec)
@@ -605,4 +605,3 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
     #return sum(dScore) / len(dScore), sum(invScore) / len(invScore) ,sum(precList) / len(precList), sum(recList) / len(recList)
     return sum(dScore) / len(dScore), sum(invScore) / len(invScore) , prec, rec
-

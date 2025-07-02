@@ -213,7 +213,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     # start YOLO experiment
     # Yolo Params is a list of dictionaries with all possible parameters
     yoloParams = makeParamDicts(["scale", "mosaic"],[[0.0,0.5,1.0],[0.0,0.5,1.0]]) if doYolo else []
-    
+
     # Print first line of results file
     if yoloParams != []:
         for k in yoloParams[0].keys():
@@ -259,7 +259,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.1, 0.2, 0.25],[0.5,0.75],[0.5,0.7,0.85]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["convnextmaskrcnn","maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.1, 0.2, 0.25],[0.5,0.75],[0.5,0.7,0.85]]) if doPytorchModels else []
     #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
 
     # score: Increase to filter out low-confidence boxes (default ~0.05)
