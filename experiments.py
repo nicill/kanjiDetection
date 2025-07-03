@@ -192,7 +192,8 @@ def classicalDescriptorExperiment(fName):
 
 def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     """
-        Experiment to compare different values of DL networks
+        Experiment to compare different typs 
+        of object detection DL networks
     """
     # use the GPU or the CPU, if a GPU is not available
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -256,10 +257,11 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     print("creating dataset in experiment")
     dataset = ODDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
     dataset_test = ODDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform())
+    #dataset = dataset_test = None # debugging purposes
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["convnextmaskrcnn","maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.1, 0.2, 0.25],[0.5,0.75],[0.5,0.7,0.85]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["convnextmaskrcnn","maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25,0.1],[0.5,0.75],[0.7,0.5]]) if doPytorchModels else []
     #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
 
     # score: Increase to filter out low-confidence boxes (default ~0.05)
@@ -273,28 +275,32 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     # this should be for faster rcnn mask rcnn
     for tParams in frcnnParams:
-        print("testing params "+str(tParams))
-        filePath = "exp"+paramsDictToString(tParams)+"fasterrcnn_resnet50_fpn.pth"
+        filePath = "exp"+paramsDictToString(tParams)+"Epochs"+str(conf["ep"])+".pth"
+        print("testing params "+str(tParams)+" with filePath "+str(filePath))
 
-        my_file = Path("/path/to/file")
-        trainAgain = not Path(filePath).is_file()
-        start = time.time()
-        if conf["Train"] or not trainAgain:
-            pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
-                                        num_epochs = conf["ep"], trainAgain=trainAgain, proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
-        end = time.time()
-        trainTime = end - start
+        try:
+            trainAgain = not Path(filePath).is_file()
+            start = time.time()
+            if conf["Train"] or not trainAgain:
+                pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
+                                            num_epochs = conf["ep"], trainAgain=trainAgain, proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
+            end = time.time()
+            trainTime = end - start
 
-        predConf = tParams["predconf"]
-        start = time.time()
-        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, postProcess = 0, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams))  )
-        end = time.time()
-        testTime = end - start
+            predConf = tParams["predconf"]
+            start = time.time()
+            prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, postProcess = 0, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams))  )
+            end = time.time()
+            testTime = end - start
 
-        for k,v in tParams.items():
-            f.write(str(v)+",")
-        f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+","+str(trainTime)+","+str(testTime)+"\n")
-        f.flush()
+            for k,v in tParams.items():
+                f.write(str(v)+",")
+            f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+","+str(trainTime)+","+str(testTime)+"\n")
+            f.flush()
+        except:
+            f.write("problem with training \n")
+            f.flush()
+
 
     f.close()
 
