@@ -454,11 +454,16 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
 
         x, y = int(match.group(1)), int(match.group(2))
         image_path = os.path.join(predFolder, fname)
+
+        # Here the tiles should be read from the original folder, not the predicted one, 
         tile = cv2.imread(image_path)
+        if tile is None:
+            # this should not happen
+            raise FileNotFoundError(f"Could not read image: {image_path}")
+
+        # the tile masks should be read from the predictions folder but they may not exist
         tileMask = cv2.imread(os.path.join(predFolder, "PREDMASK"+fname),0)
 
-        if tile is None:
-            raise FileNotFoundError(f"Could not read image: {image_path}")
 
         h, w = tile.shape[:2]
         stitched_image[y:y+h, x:x+w] = tile

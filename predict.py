@@ -576,6 +576,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
 
     # now reconstruct the full images and masks from what we have in the folder
+    # the original data folder should also be accessed and passed to the function
     for imageN,TileList  in dataset_test.getSliceFileInfo().items():
         rebuildImageFromTiles(imageN,TileList,predFolder)
 

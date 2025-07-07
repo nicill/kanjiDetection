@@ -189,16 +189,15 @@ class ODDataset(Dataset):
                     cleanUpMask(mask, areaTH = 100)
                     mask = cleanUpMaskBlackPixels(mask, im, areaTH = 100 )
 
-                    #if np.sum(mask==0) > 100: #avoid empty masks
-                    # store them both, always
-                    self.imageNameList.append( os.path.join(self.imageFolder,imageName) )
-                    self.maskNameList.append( os.path.join(self.maskFolder,f) )
+                    if np.sum(mask==0) > 100: # add only non-empty masks to the list of images and masks
+                        self.imageNameList.append( os.path.join(self.imageFolder,imageName) )
+                        self.maskNameList.append( os.path.join(self.maskFolder,f) )
 
-                    # this was previously slice, the image name will be anything before the last "x" plus the file extension    
-
+                    # but add all tiles, even empty ones, to the dictionary
                     self.slicesToImages[ imageName[:imageName.rfind("x")]+imageName[-4:]].append(imageName)
 
                 else:
+                    # CAREFUL, THIS PART MAY NO BE UP TO DATA
                     # slice mask and image together, store them in the forOD folder
                     wSize = (slice,slice)
                     count = 0
@@ -223,8 +222,8 @@ class ODDataset(Dataset):
 
                                 count+=1
         #print(self.slicesToImages)
-        #for k,v in self.slicesToImages.items():
-        #    print(str(k)+" "+str(len(v)))
+        for k,v in self.slicesToImages.items():
+            print(str(k)+" "+str(v))
         #print(len(self.slicesToImages))
     
     def __getitem__(self, idx):
