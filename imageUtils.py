@@ -331,6 +331,13 @@ def boxListEvaluation(bPred, bGT,th = 0.5):
 
         return inter_area / union_area
 
+    """
+    print("predicted boxes \n")
+    print(bPred)
+
+    print("\nGT boxes!!!!\n")
+    print(bGT)
+    """
     # Dictionary that contains the boxes in the ground truth that have been overlapped by a predicted box
     tpDict = {}
     for box in bPred:
@@ -460,7 +467,7 @@ def rebuildImageFromTiles(imageN, TileList, predFolder, origFolder):
         image_path = os.path.join(origFolder, fname)
         #print("reading "+str(image_path))
 
-        # Here the tiles should be read from the original folder, not the predicted one, 
+        # Here the tiles should be read from the original folder, not the predicted one,
         tile = cv2.imread(image_path)
         if tile is None:
             # this should not happen
@@ -476,7 +483,7 @@ def rebuildImageFromTiles(imageN, TileList, predFolder, origFolder):
 
         # make sure to overlap all mask predictions
         stitched_maskAUX = np.ones((full_height, full_width), dtype=np.uint8)
-        
+
         if tileMask is not None:
             h, w = min(h,tileMask.shape[0]) , min(2,tileMask.shape[1]) # not sure if this is really working, the tiles are pretty wonky
             stitched_maskAUX[y:y+h, x:x+w] = tileMask[:h,:w] #used to be just tilemask, check that this works
@@ -858,17 +865,42 @@ def boxCoordsToFile(file,boxC):
     with open(file, 'a') as f:
         list(map( writeTuple, boxC))
 
+"""
 def fileToBoxCoords(file, returnCat=False):
-    """
     Reads bounding boxes from a file.
     If returnCat=True: returns (c, px, py, w, h)
     If returnCat=False: returns (px, py, w, h)
-    """
     with open(file, 'r') as f:
         if returnCat:
             return [tuple(map(float, line.strip().split())) for line in f if line.strip()]
         else:
             return [tuple(map(float, line.strip().split()[1:])) for line in f if line.strip()]
+"""
+
+def fileToBoxCoords(file, returnCat=False, yoloToXYXY=False, imgSize=None):
+    """
+        Reads bounding boxes from a file.
+        If returnCat=True: returns (c, px, py, w, h) else (px, py, w, h)
+        the YOLOToXYXY thing changes from the annoying yolo format to something normal
+        but it needs the image size
+    """
+    if yoloToXYXY and not imgSize:
+        raise ValueError("imgSize=(w, h) required if yoloToXYXY=True")
+
+    w_img, h_img = imgSize if imgSize else (1, 1)
+
+    with open(file, 'r') as f:
+        boxes = []
+        for line in f:
+            if not line.strip():
+                continue
+            vals = list(map(float, line.strip().split()))
+            c, cx, cy, w, h = vals if returnCat else (None, *vals[1:])
+            cx, cy, w, h = cx * w_img, cy * h_img, w * w_img, h * h_img if yoloToXYXY else (cx, cy, w, h)
+            box = (cx - w/2, cy - h/2, cx + w/2, cy + h/2) if yoloToXYXY else (cx, cy, w, h)
+            boxes.append((int(c), *box) if returnCat else box)
+    return boxes
+
 
 
 if __name__ == "__main__":

@@ -192,7 +192,7 @@ def classicalDescriptorExperiment(fName):
 
 def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     """
-        Experiment to compare different typs 
+        Experiment to compare different typs
         of object detection DL networks
     """
     # use the GPU or the CPU, if a GPU is not available
@@ -318,4 +318,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf, doYolo = False , doPytorchModels = True)
+    DLExperiment(conf, doYolo = True , doPytorchModels = True)

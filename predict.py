@@ -199,14 +199,15 @@ def predict_yolo(conf, prefix = 'combined_data_'):
 
         detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8', model_path=modelpath,device=0)
         image = cv2.imread(imPath)
-        gtBoxes = fileToBoxCoords(os.path.join(boxPath,os.path.basename(imPath)[:-4]+".txt"),returnCat = False)
+        #gtBoxes = fileToBoxCoords(os.path.join(boxPath,os.path.basename(imPath)[:-4]+".txt"),returnCat = False)
+        gtBoxes = fileToBoxCoords(os.path.join(boxPath,os.path.basename(imPath)[:-4]+".txt"), returnCat = False, yoloToXYXY=True, imgSize=(image.shape[1], image.shape[0]))
 
         result = get_sliced_prediction(image,detectionModel,slice_height=512
         ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
         verbose = False )
         predBoxes = [ p.bbox.to_xyxy() for p in result.object_prediction_list ] # change from the sahi prediction thing to a list of tuples (int this case, ignore category)
-
         boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
+
 
         if len(gtBoxes) > 0:
             TP,FP,FN = boxListEvaluation(predBoxes,gtBoxes)
@@ -223,8 +224,8 @@ def predict_yolo(conf, prefix = 'combined_data_'):
             dS, invS = boxListEvaluationCentroids(predBoxes,gtBoxes)
             dScore.append(dS)
             invScore.append(invS)
-        else:
-            print("predict_yolo found a GT tile wihtout boxes")
+        #else:
+            #print("predict_yolo found a GT tile wihtout boxes")
 
         """
         outMask = boxesToMaskFile(result,predict_dir+'/MASK' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
