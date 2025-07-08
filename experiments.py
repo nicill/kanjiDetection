@@ -277,31 +277,29 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
         filePath = "exp"+paramsDictToString(tParams)+"Epochs"+str(conf["ep"])+".pth"
         print("testing params "+str(tParams)+" with filePath "+str(filePath))
 
-        #try:
-        trainAgain = not Path(filePath).is_file()
-        start = time.time()
-        if conf["Train"] or not trainAgain:
-            pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
-                                        num_epochs = conf["ep"], trainAgain=trainAgain, proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
-        end = time.time()
-        trainTime = end - start
+        try:
+            trainAgain = not Path(filePath).is_file()
+            start = time.time()
+            if conf["Train"] or not trainAgain:
+                pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
+                                            num_epochs = conf["ep"], trainAgain=trainAgain, proportion = proportion, mType = tParams["modelType"], trainParams = tParams)
+            end = time.time()
+            trainTime = end - start
 
-        predConf = tParams["predconf"]
-        start = time.time()
-        prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, postProcess = 0, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams)), origFolder = os.path.join(conf["TV_dir"],conf["Test_dir"],"images" )  )
-        end = time.time()
-        testTime = end - start
+            predConf = tParams["predconf"]
+            start = time.time()
+            prec,rec, oprec, orec = predict_pytorch(dataset_test = dataset_test, model = pmodel, device = device, predConfidence = predConf, postProcess = 0, predFolder = os.path.join(conf["Pred_dir"], "exp"+paramsDictToString(tParams)), origFolder = os.path.join(conf["TV_dir"],conf["Test_dir"],"images" )  )
+            end = time.time()
+            testTime = end - start
 
-        for k,v in tParams.items():
-            f.write(str(v)+",")
-        f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+","+str(trainTime)+","+str(testTime)+"\n")
-        f.flush()
-        #except Exception as e:
-        #    print(e)
-        #    f.write("problem with training "+str(e)+"\n")
-        #    f.flush()
-
-
+            for k,v in tParams.items():
+                f.write(str(v)+",")
+            f.write(str(prec)+","+str(rec)+","+str(oprec)+","+str(orec)+","+str(trainTime)+","+str(testTime)+"\n")
+            f.flush()
+        except Exception as e:
+            print(e)
+            f.write("problem with training "+str(e)+"\n")
+            f.flush()
     f.close()
 
 
@@ -315,7 +313,6 @@ if __name__ == "__main__":
     #BEST
     #DOG 77.5665178571429	 {'over': 0.5;min_s': 20;max_s': 100}
     # MSER 72.6126785714286	 {'delta': 5;minA': 500;maxA': 25000}
-
 
     # DL experiment
     conf = read_config(configFile)
