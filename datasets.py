@@ -222,8 +222,8 @@ class ODDataset(Dataset):
 
                                 count+=1
         #print(self.slicesToImages)
-        for k,v in self.slicesToImages.items():
-            print(str(k)+" "+str(v))
+        #for k,v in self.slicesToImages.items():
+        #    print(str(k)+" "+str(v))
         #print(len(self.slicesToImages))
     
     def __getitem__(self, idx):

@@ -416,7 +416,7 @@ def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
     return prec,rec,sum(precList) / len(precList), sum(recList) / len(recList)
 
 @torch.no_grad()
-def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, predFolder):
+def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, predFolder, origFolder):
     """
         Inference for pytorch object detectors
         possible postprocess values, 0 for no postprocess
@@ -438,7 +438,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
     data_loader = torch.utils.data.DataLoader(
         dataset_test,
-        batch_size=1,
+        batch_size=16,
         shuffle=False,
         collate_fn=collate_fn
     )
@@ -448,7 +448,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     # create output folder if necessary
     Path(os.path.join(predFolder,"FULL")).mkdir(parents=True, exist_ok=True)
 
-    # evaluate on the test dataset
+    # evaluate on the test dataset (why???)
     n_threads = torch.get_num_threads()
     torch.set_num_threads(1)
     cpu_device = torch.device("cpu")
@@ -466,6 +466,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     totalTP, totalFP, totalFN = 0,0,0
     for ind, (images, targets) in enumerate(data_loader):
         imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
+        #print("testing "+str(imageName))
         imToStore = np.ascontiguousarray(images[0].permute(1, 2, 0))
         height, width = imToStore.shape[:2]
 
@@ -509,10 +510,9 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             targets[0]['boxes'] = torch.empty((0, 4), dtype=torch.float32)
             targets[0]['labels'] = torch.empty((0,), dtype=targets[0]['labels'].dtype)
 
-        #if len(filtered_outputs[0]["boxes"]) >= 0 :
-        #if len(targets[0]['boxes']) > 0: # ignore tiles without boxes
-        if True:
 
+        #if len(filtered_outputs[0]["boxes"]) >= 0 :
+        if len(targets[0]['boxes']) > 0: # ignore tiles without boxes
             correctedLabels, correctedBoxes = filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]
             # apply postprocessing if needed
             # modify boxes and labels to eliminate boxes with too much overlap
@@ -545,7 +545,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             recList.append(thisRec)
             dScore.append(dS)
             invScore.append(invS)
-            #print("for image "+str(imageName)+" got "+str((prec,rec)))
+            #print("for image "+str(imageName)+" got "+str((thisPrec,thisRec)))
 
             # store image, predicted mask and box coords
             predMask = maskFromBoxes(boxCoords,imToStore.shape)
@@ -578,7 +578,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     # now reconstruct the full images and masks from what we have in the folder
     # the original data folder should also be accessed and passed to the function
     for imageN,TileList  in dataset_test.getSliceFileInfo().items():
-        rebuildImageFromTiles(imageN,TileList,predFolder)
+        rebuildImageFromTiles(imageN, TileList, predFolder, origFolder)
 
     # accumulate predictions from all images
     torch.set_num_threads(n_threads)

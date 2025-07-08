@@ -392,7 +392,7 @@ def boxListEvaluationCentroids(bPred, bGT):
 
     return precision,recall
 
-def rebuildImageFromTiles(imageN,TileList,predFolder):
+def rebuildImageFromTiles(imageN, TileList, predFolder, origFolder):
     """
         Receive an imageName (image to build)
         and a list of tiles (as file Names)
@@ -435,8 +435,10 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
 
         return max_right, max_bottom
 
+    #print("rebuild image")
     # Get final image dimensions
-    full_width, full_height = get_original_image_size(TileList, predFolder)
+    full_width, full_height = get_original_image_size(TileList, origFolder)
+    #print("rebuild image size "+str((full_width, full_height)))
 
     # Prepare white canvas
     #stitched_image = np.zeros((full_height, full_width, 3), dtype=np.uint8)
@@ -448,12 +450,15 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
     boxCoords = []
 
     for fname in TileList:
+        #print("rebuild, processing image "+fname)
         match = re.search(r'x(\d+)y(\d+)', fname)
         if not match:
             raise ValueError(f"Filename '{fname}' does not contain valid 'x<num>y<num>' format.")
 
         x, y = int(match.group(1)), int(match.group(2))
-        image_path = os.path.join(predFolder, fname)
+        #image_path = os.path.join(predFolder, fname)
+        image_path = os.path.join(origFolder, fname)
+        #print("reading "+str(image_path))
 
         # Here the tiles should be read from the original folder, not the predicted one, 
         tile = cv2.imread(image_path)
@@ -461,16 +466,20 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
             # this should not happen
             raise FileNotFoundError(f"Could not read image: {image_path}")
 
-        # the tile masks should be read from the predictions folder but they may not exist
-        tileMask = cv2.imread(os.path.join(predFolder, "PREDMASK"+fname),0)
-
-
         h, w = tile.shape[:2]
         stitched_image[y:y+h, x:x+w] = tile
 
+        # the tile masks should be read from the predictions folder but they may not exist
+        tileMask = cv2.imread(os.path.join(predFolder, "PREDMASK"+fname),0)
+
+        if tileMask is not None: print("tileMask read "+str(tileMask.shape) )
+
         # make sure to overlap all mask predictions
         stitched_maskAUX = np.ones((full_height, full_width), dtype=np.uint8)
-        if tileMask is not None: stitched_maskAUX[y:y+h, x:x+w] = tileMask
+        
+        if tileMask is not None:
+            h, w = min(h,tileMask.shape[0]) , min(2,tileMask.shape[1]) # not sure if this is really working, the tiles are pretty wonky
+            stitched_maskAUX[y:y+h, x:x+w] = tileMask[:h,:w] #used to be just tilemask, check that this works
         stitched_mask[ stitched_maskAUX == 0 ] = 0
 
         # also read box coords if we have them
@@ -481,6 +490,8 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
                     newP1 = (int(float(px1) + float(x)), int(float(py1) + float(y)))
                     newP2 = (int(float(px2) + float(x)), int(float(py2) + float(y)))
                     boxCoords.append((c,str(newP1[0]),str(newP1[1]),str(newP2[0]),str(newP2[1])))
+
+    #print("now going to write")
 
     # write to disk (image, mask, bounding box file)
     cv2.imwrite(os.path.join(predFolder,"FULL",imageN), stitched_image )
@@ -493,6 +504,8 @@ def rebuildImageFromTiles(imageN,TileList,predFolder):
     boxCoordsToFile(os.path.join(predFolder,"FULL","BOXCOORDS"+imageN[:-4]+".txt"),boxCoords)
     # also, make a pretty image of the original image with boxes and categories
     cv2.imwrite(os.path.join(predFolder,"FULL","Pretty"+imageN), prettyImage(boxCoords,stitched_image) )
+    #print("end rebuild image")
+
 
 def prettyImage(boxes, image, color = 125, thickness=4, font_scale=0.5, font_thickness=3):
     """
