@@ -479,7 +479,7 @@ def rebuildImageFromTiles(imageN, TileList, predFolder, origFolder):
         # the tile masks should be read from the predictions folder but they may not exist
         tileMask = cv2.imread(os.path.join(predFolder, "PREDMASK"+fname),0)
 
-        if tileMask is not None: print("tileMask read "+str(tileMask.shape) )
+        #if tileMask is not None: print("tileMask read "+str(tileMask.shape) )
 
         # make sure to overlap all mask predictions
         stitched_maskAUX = np.ones((full_height, full_width), dtype=np.uint8)
@@ -488,6 +488,7 @@ def rebuildImageFromTiles(imageN, TileList, predFolder, origFolder):
             h, w = min(h,tileMask.shape[0]) , min(2,tileMask.shape[1]) # not sure if this is really working, the tiles are pretty wonky
             stitched_maskAUX[y:y+h, x:x+w] = tileMask[:h,:w] #used to be just tilemask, check that this works
         stitched_mask[ stitched_maskAUX == 0 ] = 0
+
 
         # also read box coords if we have them
         if tileMask is not None:
@@ -845,8 +846,8 @@ def sliceAndBox(im,mask,slice):
         # get mask window
         maskW = mask[y:y + wSize[1], x:x + wSize[0]]
         # The mask was already binarized
-        # compute box coords
-        coords = boxesFromMask(maskW,yoloFormat = False)
+        # compute box coords in yolo format because only YOLO will read them
+        coords = boxesFromMask(maskW, cl = 0, yoloFormat = True)
         # add window, mask window and boxlist
         out.append(("x"+str(x)+"y"+str(y),window,maskW,coords))
     return out

@@ -57,7 +57,7 @@ class CPDataset(Dataset):
                     # also, store the label in the label list
                     if currentClass not in self.classesDict: self.classesDict[currentClass] = len(self.classesDict)
                     self.labelList.append(self.classesDict[currentClass])
-        if verbose: 
+        if verbose:
             self.classDictToFile("classDict.txt")
 
     def __getitem__(self, index):
@@ -107,11 +107,11 @@ class CPDataset(Dataset):
             train.labelList.append(toDivide[i][1])
 
         return train,valid
-    
+
     def classDictToFile(self,outFile):
         """
         write the classDictionary to file
-        
+
         """
         if (len(self.classesDict.items())>0):
             with open(outFile,"w") as f:
@@ -154,7 +154,6 @@ class ODDataset(Dataset):
             "preSliced" contains information on whether the images are already the right size (have already been sliced)
             or if this method has to do it
         """
-
         # Data Structures:
         self.imageNameList = []
         self.maskNameList = []
@@ -174,7 +173,7 @@ class ODDataset(Dataset):
                 # read mask and image, everyone is binary
                 mask = read_Binary_Mask(os.path.join(self.maskFolder,f))
 
-                # image names are different if we read from original data or from already converted yoloFormat               
+                # image names are different if we read from original data or from already converted yoloFormat
                 imageName = f[:-8]+f[-4:] if yoloFormat else f[2:-6]+".tif_resultat_noiseRemoval.tif"
 
                 im = read_Binary_Mask(os.path.join(self.imageFolder,imageName))
@@ -190,14 +189,17 @@ class ODDataset(Dataset):
                     mask = cleanUpMaskBlackPixels(mask, im, areaTH = 100 )
 
                     if np.sum(mask==0) > 100: # add only non-empty masks to the list of images and masks
+                        #print(os.path.join(self.imageFolder,imageName)+" has boxes")
+
                         self.imageNameList.append( os.path.join(self.imageFolder,imageName) )
                         self.maskNameList.append( os.path.join(self.maskFolder,f) )
+
 
                     # but add all tiles, even empty ones, to the dictionary
                     self.slicesToImages[ imageName[:imageName.rfind("x")]+imageName[-4:]].append(imageName)
 
                 else:
-                    # CAREFUL, THIS PART MAY NO BE UP TO DATA
+                    # CAREFUL, THIS PART MAY NO BE UP TO DATE
                     # slice mask and image together, store them in the forOD folder
                     wSize = (slice,slice)
                     count = 0
@@ -208,10 +210,14 @@ class ODDataset(Dataset):
                             # this should be done better, with padding!, maybe https://docs.opencv.org/3.4/dc/da3/tutorial_copyMakeBorder.html
                             maskW = mask[y:y + wSize[1], x:x + wSize[0]]
                             # discard empty masks
-                            #cleanUpMask(maskW)
+                            cleanUpMask(maskW)
                             # here we should probably add cleanUpMaskBlackPixels and maybe do it for YOLO too (in buildtrainvalidation?)
-                            #if np.sum(maskW==0) > 100:
-                            if True:
+
+                            # always store the tile
+                            cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
+
+                            if np.sum(maskW==0) > 100:
+                            #if True:
                                 # store them both
                                 cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
                                 self.imageNameList.append( os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png") )
@@ -221,11 +227,12 @@ class ODDataset(Dataset):
                                 self.slicesToImages[imageName].append(("Tile"+str(count)+f[2:-6]+".png",x,y))
 
                                 count+=1
+
         #print(self.slicesToImages)
         #for k,v in self.slicesToImages.items():
         #    print(str(k)+" "+str(v))
         #print(len(self.slicesToImages))
-    
+
     def __getitem__(self, idx):
         # load images and masks
         img_path = self.imageNameList[idx]

@@ -255,6 +255,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("creating dataset in experiment")
     dataset = ODDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
+    print("dataset test in experiment")
     dataset_test = ODDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform())
     #dataset = dataset_test = None # debugging purposes
 
@@ -318,4 +319,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf, doYolo = True , doPytorchModels = True)
+    DLExperiment(conf, doYolo = False , doPytorchModels = True)

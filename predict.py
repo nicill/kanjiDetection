@@ -191,7 +191,6 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     #ignoreCount = 0
     totalTP, totalFP, totalFN = 0, 0, 0
     for imPath in testImageList:
-        #print("predictYOLO, predicting "+imPath)
         currentmodel = prefix if len(conf["models"])<1 else conf["models"][0] # should get totally rid of conf["models"]
 
         modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
@@ -205,9 +204,9 @@ def predict_yolo(conf, prefix = 'combined_data_'):
         result = get_sliced_prediction(image,detectionModel,slice_height=512
         ,slice_width=512,overlap_height_ratio=0.2,overlap_width_ratio=0.2,
         verbose = False )
+
         predBoxes = [ p.bbox.to_xyxy() for p in result.object_prediction_list ] # change from the sahi prediction thing to a list of tuples (int this case, ignore category)
         boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
-
 
         if len(gtBoxes) > 0:
             TP,FP,FN = boxListEvaluation(predBoxes,gtBoxes)
@@ -439,7 +438,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
     data_loader = torch.utils.data.DataLoader(
         dataset_test,
-        batch_size=16,
+        batch_size=1,
         shuffle=False,
         collate_fn=collate_fn
     )
@@ -455,7 +454,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     cpu_device = torch.device("cpu")
     model.eval()
 
-    print("evaluating "+str(len(data_loader)))
+    #print("evaluating "+str(len(data_loader)))
 
     count=0
     precList = []
@@ -514,6 +513,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
         #if len(filtered_outputs[0]["boxes"]) >= 0 :
         if len(targets[0]['boxes']) > 0: # ignore tiles without boxes
+            #print("this image has GT boxes "+str(imageName))
             correctedLabels, correctedBoxes = filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]
             # apply postprocessing if needed
             # modify boxes and labels to eliminate boxes with too much overlap
@@ -531,7 +531,15 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
             boxCoords = correctedBoxes
             #boxCatAndCoords = boxAndCatsToList(correctedLabels, correctedBoxes)
 
+            #print("corrected boxes")
+            #print(correctedBoxes)
+            #print("targets")
+            #print(targets[0]["boxes"])
+
+
             boxCatAndCoords = []
+
+
 
             # create a new list of tuples with category predictions to save to file
             for el,tup in zip(correctedLabels, correctedBoxes):
@@ -550,6 +558,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
             # store image, predicted mask and box coords
             predMask = maskFromBoxes(boxCoords,imToStore.shape)
+            #print("writing predmask "+str(os.path.join(predFolder,"PREDMASK"+imageName)))
             cv2.imwrite( os.path.join(predFolder,"PREDMASK"+imageName),predMask  )
             boxCoordsToFile(os.path.join(predFolder,"BOXCOORDS"+imageName[:-4]+".txt"),boxCatAndCoords)
 
@@ -561,6 +570,8 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
 
         #else:
+            #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ this image has no GT boxes "+str(imageName))
+
             # ignore if there are no outputs unless there should be
         #    if len(targets[0]['boxes']) >= 5:
         #        prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
