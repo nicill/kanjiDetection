@@ -279,6 +279,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
         try:
             trainAgain = not Path(filePath).is_file()
+            print("Training again "+str(trainAgain)+" "+str(filePath))
             start = time.time()
             if conf["Train"] or not trainAgain:
                 pmodel = train_pytorchModel(dataset = dataset, device = device, num_classes = num_classes, file_path = filePath,
@@ -318,4 +319,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf, doYolo = True , doPytorchModels = True)
+    DLExperiment(conf, doYolo = False , doPytorchModels = True)
