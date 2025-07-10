@@ -320,4 +320,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf, doYolo = False , doPytorchModels = True)
+    DLExperiment(conf, doYolo = True , doPytorchModels = True)

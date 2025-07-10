@@ -180,11 +180,7 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
 
     data_loader = torch.utils.data.DataLoader(
         dataset,
-<<<<<<< HEAD
         batch_size = 1,
-=======
-        batch_size = 4,
->>>>>>> d78a55d5c5bcf012524cb510321b66df0725f57d
         shuffle=False,
         collate_fn=collate_fn
     )

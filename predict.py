@@ -438,11 +438,7 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
 
     data_loader = torch.utils.data.DataLoader(
         dataset_test,
-<<<<<<< HEAD
         batch_size=1,
-=======
-        batch_size=4,
->>>>>>> d78a55d5c5bcf012524cb510321b66df0725f57d
         shuffle=False,
         collate_fn=collate_fn
     )
