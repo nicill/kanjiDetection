@@ -371,6 +371,14 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
         metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
+        # memory cleanup
+        del images
+        del targets
+        del loss_dict
+        del losses
+        torch.cuda.empty_cache()
+
+
     return metric_logger
 
 def collate_fn(batch):

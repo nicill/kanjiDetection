@@ -464,127 +464,131 @@ def predict_pytorch(dataset_test, model, device, predConfidence, postProcess, pr
     ignoreCount = 0
 
     totalTP, totalFP, totalFN = 0,0,0
-    for ind, (images, targets) in enumerate(data_loader):
-        imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
-        #print("testing "+str(imageName))
-        imToStore = np.ascontiguousarray(images[0].permute(1, 2, 0))
-        height, width = imToStore.shape[:2]
+    with torch.no_grad():
+        for ind, (images, targets) in enumerate(data_loader):
+            imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
+            #print("testing "+str(imageName))
+            imToStore = np.ascontiguousarray(images[0].permute(1, 2, 0))
+            height, width = imToStore.shape[:2]
 
-        # store test images to disk
-        images = list(img.to(device) for img in images)
+            # store test images to disk
+            images = list(img.to(device) for img in images)
 
-        torch.cuda.synchronize()
-        outputs = model(images)
+            torch.cuda.synchronize()
+            outputs = model(images)
 
-        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+            outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
 
-        # Move outputs to CPU and filter based on confidence score, also filter out border boxes.
-        filtered_outputs = []
-        for output in outputs:
-            high_conf_indices = output['scores'] > predConfidence
+            # Move outputs to CPU and filter based on confidence score, also filter out border boxes.
+            filtered_outputs = []
+            for output in outputs:
+                high_conf_indices = output['scores'] > predConfidence
 
-            keep_indices = []
-            for i, box in enumerate(output['boxes']):
-                if high_conf_indices[i] and not borderbox(box, width, height):
-                    keep_indices.append(i)
+                keep_indices = []
+                for i, box in enumerate(output['boxes']):
+                    if high_conf_indices[i] and not borderbox(box, width, height):
+                        keep_indices.append(i)
 
-            keep_indices = torch.tensor(keep_indices, dtype=torch.long)
+                keep_indices = torch.tensor(keep_indices, dtype=torch.long)
 
-            filtered_output = {
-                'boxes': output['boxes'][keep_indices].to(cpu_device),
-                'labels': output['labels'][keep_indices].to(cpu_device),
-                'scores': output['scores'][keep_indices].to(cpu_device),
-            }
-            filtered_outputs.append(filtered_output)
+                filtered_output = {
+                    'boxes': output['boxes'][keep_indices].to(cpu_device),
+                    'labels': output['labels'][keep_indices].to(cpu_device),
+                    'scores': output['scores'][keep_indices].to(cpu_device),
+                }
+                filtered_outputs.append(filtered_output)
 
-        # filter out border boxes for targets
-        boxes = targets[0]['boxes']
-        keep_target_indices = [] if len(boxes) == 0 else [
-            i for i, box in enumerate(boxes) if not borderbox(box, width, height)
-        ]
-        if keep_target_indices:
-            keep_target_indices = torch.tensor(keep_target_indices, dtype=torch.long)
-            targets[0]['boxes'] = boxes[keep_target_indices]
-            targets[0]['labels'] = targets[0]['labels'][keep_target_indices]
-        else:
-            targets[0]['boxes'] = torch.empty((0, 4), dtype=torch.float32)
-            targets[0]['labels'] = torch.empty((0,), dtype=targets[0]['labels'].dtype)
-
-
-        #if len(filtered_outputs[0]["boxes"]) >= 0 :
-        if len(targets[0]['boxes']) > 0: # ignore tiles without boxes
-            #print("this image has GT boxes "+str(imageName))
-            correctedLabels, correctedBoxes = filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]
-            # apply postprocessing if needed
-            # modify boxes and labels to eliminate boxes with too much overlap
-            if postProcess > 0: correctedLabels, correctedBoxes = filter_boxes_by_overlap_and_area_distance(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"], 255*imToStore, os.path.join(predFolder,"removal"+imageName))
-
-            # now try to fill holes in the grid
-            if postProcess > 1: correctedLabels, correctedBoxes = fillHolesInGrid(correctedLabels, correctedBoxes, imToStore, os.path.join(predFolder,"newBoxes"+imageName))
-
-            TP,FP,FN = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
-            #update totals
-            totalTP += TP
-            totalFP += FP
-            totalFN += FN
-            dS, invS = boxListEvaluationCentroids(correctedBoxes,targets[0]["boxes"])
-            boxCoords = correctedBoxes
-            #boxCatAndCoords = boxAndCatsToList(correctedLabels, correctedBoxes)
-
-            #print("corrected boxes")
-            #print(correctedBoxes)
-            #print("targets")
-            #print(targets[0]["boxes"])
+            # filter out border boxes for targets
+            boxes = targets[0]['boxes']
+            keep_target_indices = [] if len(boxes) == 0 else [
+                i for i, box in enumerate(boxes) if not borderbox(box, width, height)
+            ]
+            if keep_target_indices:
+                keep_target_indices = torch.tensor(keep_target_indices, dtype=torch.long)
+                targets[0]['boxes'] = boxes[keep_target_indices]
+                targets[0]['labels'] = targets[0]['labels'][keep_target_indices]
+            else:
+                targets[0]['boxes'] = torch.empty((0, 4), dtype=torch.float32)
+                targets[0]['labels'] = torch.empty((0,), dtype=targets[0]['labels'].dtype)
 
 
-            boxCatAndCoords = []
+            #if len(filtered_outputs[0]["boxes"]) >= 0 :
+            if len(targets[0]['boxes']) > 0: # ignore tiles without boxes
+                #print("this image has GT boxes "+str(imageName))
+                correctedLabels, correctedBoxes = filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"]
+                # apply postprocessing if needed
+                # modify boxes and labels to eliminate boxes with too much overlap
+                if postProcess > 0: correctedLabels, correctedBoxes = filter_boxes_by_overlap_and_area_distance(filtered_outputs[0]["labels"],filtered_outputs[0]["boxes"], 255*imToStore, os.path.join(predFolder,"removal"+imageName))
+
+                # now try to fill holes in the grid
+                if postProcess > 1: correctedLabels, correctedBoxes = fillHolesInGrid(correctedLabels, correctedBoxes, imToStore, os.path.join(predFolder,"newBoxes"+imageName))
+
+                TP,FP,FN = boxListEvaluation(correctedBoxes,targets[0]["boxes"])
+                #update totals
+                totalTP += TP
+                totalFP += FP
+                totalFN += FN
+                dS, invS = boxListEvaluationCentroids(correctedBoxes,targets[0]["boxes"])
+                boxCoords = correctedBoxes
+                #boxCatAndCoords = boxAndCatsToList(correctedLabels, correctedBoxes)
+
+                #print("corrected boxes")
+                #print(correctedBoxes)
+                #print("targets")
+                #print(targets[0]["boxes"])
 
 
+                boxCatAndCoords = []
 
-            # create a new list of tuples with category predictions to save to file
-            for el,tup in zip(correctedLabels, correctedBoxes):
-                # convert so they are not tensors
-                el = el.tolist()
-                tup = tuple(tup.tolist())
-                boxCatAndCoords.append((el,)+tup)
+                # create a new list of tuples with category predictions to save to file
+                for el,tup in zip(correctedLabels, correctedBoxes):
+                    # convert so they are not tensors
+                    el = el.tolist()
+                    tup = tuple(tup.tolist())
+                    boxCatAndCoords.append((el,)+tup)
 
-            thisPrec = 0 if (TP+FP) == 0 else (TP/(TP+FP))
-            precList.append(thisPrec)
-            thisRec = 0 if (TP+FN) == 0 else (TP/(TP+FN))
-            recList.append(thisRec)
-            dScore.append(dS)
-            invScore.append(invS)
-            #print("for image "+str(imageName)+" got "+str((thisPrec,thisRec)))
+                thisPrec = 0 if (TP+FP) == 0 else (TP/(TP+FP))
+                precList.append(thisPrec)
+                thisRec = 0 if (TP+FN) == 0 else (TP/(TP+FN))
+                recList.append(thisRec)
+                dScore.append(dS)
+                invScore.append(invS)
+                #print("for image "+str(imageName)+" got "+str((thisPrec,thisRec)))
 
-            # store image, predicted mask and box coords
-            predMask = maskFromBoxes(boxCoords,imToStore.shape)
-            #print("writing predmask "+str(os.path.join(predFolder,"PREDMASK"+imageName)))
-            cv2.imwrite( os.path.join(predFolder,"PREDMASK"+imageName),predMask  )
-            boxCoordsToFile(os.path.join(predFolder,"BOXCOORDS"+imageName[:-4]+".txt"),boxCatAndCoords)
+                # store image, predicted mask and box coords
+                predMask = maskFromBoxes(boxCoords,imToStore.shape)
+                #print("writing predmask "+str(os.path.join(predFolder,"PREDMASK"+imageName)))
+                cv2.imwrite( os.path.join(predFolder,"PREDMASK"+imageName),predMask  )
+                boxCoordsToFile(os.path.join(predFolder,"BOXCOORDS"+imageName[:-4]+".txt"),boxCatAndCoords)
 
-            #if len(targets[0]['boxes']) >120:
-            #    cv2.imwrite( str(len(targets[0]['boxes']))+"boxes"+imageName, imToStore*255 )
-            #    boxCoordsToFile("BOXCOORDS"+imageName[:-4]+".txt",boxCatAndCoords)
+                #if len(targets[0]['boxes']) >120:
+                #    cv2.imwrite( str(len(targets[0]['boxes']))+"boxes"+imageName, imToStore*255 )
+                #    boxCoordsToFile("BOXCOORDS"+imageName[:-4]+".txt",boxCatAndCoords)
 
-            count+=1
-
-
-        #else:
-            #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ this image has no GT boxes "+str(imageName))
-
-            # ignore if there are no outputs unless there should be
-        #    if len(targets[0]['boxes']) >= 5:
-        #        prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
-        #        print("in this case I did not predict boxes and I should have "+str(len(targets[0]['boxes']))+" but i only had "+str(len(filtered_outputs[0]["boxes"])))
+                count+=1
 
 
-        #        precList.append(prec)
-        #        recList.append(rec)
-        #        dScore.append(dS)
-        #        invScore.append(invS)
+            #else:
+                #print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ this image has no GT boxes "+str(imageName))
 
-        # always store the tile
-        cv2.imwrite( os.path.join(predFolder,imageName), imToStore*255 )
+                # ignore if there are no outputs unless there should be
+            #    if len(targets[0]['boxes']) >= 5:
+            #        prec,rec, dS, invS , boxCoords, boxCatAndCoords = 0, 0, 0, 0, [], []
+            #        print("in this case I did not predict boxes and I should have "+str(len(targets[0]['boxes']))+" but i only had "+str(len(filtered_outputs[0]["boxes"])))
+
+
+            #        precList.append(prec)
+            #        recList.append(rec)
+            #        dScore.append(dS)
+            #        invScore.append(invS)
+
+            # always store the tile
+            cv2.imwrite( os.path.join(predFolder,imageName), imToStore*255 )
+
+            # clean up    
+            del outputs
+            del filtered_outputs
+            torch.cuda.empty_cache()
 
 
     # now reconstruct the full images and masks from what we have in the folder
