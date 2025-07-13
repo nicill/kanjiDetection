@@ -359,7 +359,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
             print(loss_dict_reduced)
-            sys.exit(1)
+            raise Exception("NAN LOSS in train one epoch")
 
         optimizer.zero_grad()
         losses.backward()
@@ -372,11 +372,11 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
         # memory cleanup
-        del images
-        del targets
-        del loss_dict
-        del losses
-        torch.cuda.empty_cache()
+        #del images
+        #del targets
+        #del loss_dict
+        #del losses
+        #torch.cuda.empty_cache()
 
 
     return metric_logger

@@ -261,7 +261,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["convnextmaskrcnn","maskrcnn","fasterrcnn","ssd","fcos","retinanet"],[0.25,0.1],[0.5,0.75],[0.7,0.5]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["ssd","fcos","retinanet"],[0.25,0.1],[0.5,0.75],[0.7,0.5]]) if doPytorchModels else []
     #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
 
     # score: Increase to filter out low-confidence boxes (default ~0.05)
