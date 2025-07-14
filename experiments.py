@@ -1,5 +1,5 @@
 """
-   File to do exmperiments in Kanji
+   File to do experiments in Kanji
    Detection methods
    In Wasan documents
 """
@@ -37,13 +37,13 @@ def makeParamDicts(pars,vals):
     res = [dict(zip(pars,tup)) for tup in prod]
     return res
 
-def paramsDictToString(aDict, sep = ""):
+def paramsDictToString(aDict, forFileName = False, sep = ""):
     """
     Function to create a string from a params dict
     """
     ret = ""
     for k,v in aDict.items():
-        ret+=str(k)+sep+str(v)+sep
+        if not forFileName or k != "conf":ret+=str(k)+sep+str(v)+sep
     return ret[:-1] if sep != "" else ret
 
 def computeAndCombineMasks(file):
@@ -224,7 +224,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     for params in yoloParams:
         # Train this version of the YOLO NETWORK
         yamlTrainFile = "trainEXP.yaml"
-        prefix = "exp"+paramsDictToString(params)
+        prefix = "exp"+paramsDictToString(params, forFileName = True)
         makeTrainYAML(conf,yamlTrainFile,params)
 
         start = time.time()
@@ -275,7 +275,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     # this should be for faster rcnn mask rcnn
     for tParams in frcnnParams:
-        filePath = "exp"+paramsDictToString(tParams)+"Epochs"+str(conf["ep"])+".pth"
+        filePath = "exp"+paramsDictToString(tParams, forFileName = True)+"Epochs"+str(conf["ep"])+".pth"
         print("testing params "+str(tParams)+" with filePath "+str(filePath))
 
         try:
