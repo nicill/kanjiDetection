@@ -43,7 +43,7 @@ def paramsDictToString(aDict, forFileName = False, sep = ""):
     """
     ret = ""
     for k,v in aDict.items():
-        if not forFileName or k != "conf":ret+=str(k)+sep+str(v)+sep
+        if not forFileName or k != "predconf":ret+=str(k)+sep+str(v)+sep
     return ret[:-1] if sep != "" else ret
 
 def computeAndCombineMasks(file):
@@ -224,7 +224,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     for params in yoloParams:
         # Train this version of the YOLO NETWORK
         yamlTrainFile = "trainEXP.yaml"
-        prefix = "exp"+paramsDictToString(params, forFileName = True)
+        prefix = "exp"+paramsDictToString(params)
         makeTrainYAML(conf,yamlTrainFile,params)
 
         start = time.time()
@@ -261,7 +261,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["ssd","fcos","retinanet"],[0.25,0.1],[0.5,0.75],[0.7,0.5]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","ssd","fcos","retinanet","convnextmaskrcnn"],[0.05,0.1,0.25,0.5],[0.25,0.5,0.75],[0.3,0.5,0.7,0.8,0.9]]) if doPytorchModels else []
     #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
 
     # score: Increase to filter out low-confidence boxes (default ~0.05)
