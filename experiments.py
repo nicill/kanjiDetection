@@ -210,6 +210,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
         #buildTestingFromSingleFolderSakuma2NOGT(conf["Test_input_dir"],os.path.join(conf["TV_dir"],conf["Test_dir"]),conf["slice"],denoised = True)
 
     f = open(conf["outTEXT"][:-4]+"SUMMARY"+conf["outTEXT"][-4:],"a+")
+    print("Experiments Writing results to "+str(conf["outTEXT"][:-4]+"SUMMARY"+conf["outTEXT"][-4:]))
     print("consider YOLO? "+str(doYolo))
     # start YOLO experiment
     # Yolo Params is a list of dictionaries with all possible parameters
@@ -261,7 +262,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
     print("Experiments, train dataset length "+str(len(dataset) ))
 
-    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn","ssd","fcos","retinanet","convnextmaskrcnn"],[0.05,0.1,0.25,0.5],[0.25,0.5,0.75],[0.3,0.5,0.7,0.8,0.9]]) if doPytorchModels else []
+    frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["fasterrcnn","maskrcnn","ssd","fcos","retinanet","convnextmaskrcnn"],[0.05,0.1,0.25,0.5],[0.25,0.5,0.75],[0.3,0.5,0.7,0.8,0.9]]) if doPytorchModels else []
     #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
 
     # score: Increase to filter out low-confidence boxes (default ~0.05)
@@ -302,6 +303,10 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
             print(e)
             f.write("problem with training "+str(e)+"\n")
             f.flush()
+        except ValueError:
+            print("some sort of value error")            
+        except:
+            print("Unexpected error:", sys.exc_info()[0])
     f.close()
 
 

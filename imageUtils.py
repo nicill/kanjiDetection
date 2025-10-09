@@ -295,8 +295,8 @@ def boxListEvaluation(bPred, bGT,th = 0.5):
         for boxGT in gtB:
             op = iou(b,boxGT)
             #print("overlap percentage "+str(op))
-            if op>th and str(b) not in tpDict:
-                tpDict[str(b)] = True
+            if op>th and str(boxGT) not in tpDict:
+                tpDict[str(boxGT)] = True
 
 
     def iou(b1, b2):
