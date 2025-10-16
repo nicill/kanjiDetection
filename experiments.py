@@ -214,7 +214,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     print("consider YOLO? "+str(doYolo))
     # start YOLO experiment
     # Yolo Params is a list of dictionaries with all possible parameters
-    yoloParams = makeParamDicts(["scale", "mosaic"],[[0.0,0.5,1.0],[0.0,0.5,1.0]]) if doYolo else []
+    yoloParams = makeParamDicts(["scale", "mosaic"],[[0.3,1.0,1.5],[0.0,0.3,0.7,1.0]]) if doYolo else []
 
     # Print first line of results file
     if yoloParams != []:
@@ -230,7 +230,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
 
         start = time.time()
         if conf["Train"]: # this should be done by checking if the file already exists.
-            train_YOLO(conf, yamlTrainFile, prefix)
+            train_YOLO(conf, yamlTrainFile, prefix, params = params)
         end = time.time()
         trainTime = end - start
 
@@ -325,4 +325,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf, doYolo = False , doPytorchModels = True)
+    DLExperiment(conf, doYolo = True , doPytorchModels = False)

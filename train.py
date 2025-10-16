@@ -145,8 +145,17 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     overrides = {'data': datasrc, 'epochs': epochs, 'imgsz': imgsize, 'name': name, 'device': 0,
     'patience': 10,'exist_ok': True, 'scale': scVal, 'mosaic': mosVal}
 
-    # this change has not been tested!
-    results = model.train(**overrides)
+    #print("yolo printing parameters BEFORE!!!!!")
+    #print(overrides)
+
+    #results = model.train(**overrides)
+    # trying to get yolo to understand the parameter changes
+    model.overrides.update(overrides)
+    results = model.train()
+
+    #print("yolo printing parameters")
+    #print(overrides)
+    #print(model.trainer.args)
 
     #results = model.train(data=datasrc, epochs=epochs, imgsz=imgsize,
     #            name=name,device=0, patience = 10, exist_ok = True,
