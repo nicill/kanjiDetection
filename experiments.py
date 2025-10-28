@@ -14,15 +14,17 @@ import torch
 from pathlib import Path
 from itertools import product
 
-from datasets import ODDataset
+from datasets import ODDataset,ODDETRDataset
 
 from config import read_config
 from predict import detectBlobsMSER,detectBlobsDOG
 from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
-from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel
+from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel,train_DETR
 
 from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2, buildTestingFromSingleFolderSakuma2NOGT
-from predict import predict_yolo, predict_pytorch
+from predict import predict_yolo, predict_pytorch, predict_DETR
+
+from transformers import DetrForObjectDetection, DetrImageProcessor
 
 def makeParamDicts(pars,vals):
     """
@@ -190,7 +192,7 @@ def classicalDescriptorExperiment(fName):
     fInvMSER.close()
 
 
-def DLExperiment(conf, doYolo = False, doPytorchModels = False):
+def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
     """
         Experiment to compare different typs
         of object detection DL networks
@@ -214,7 +216,7 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     print("consider YOLO? "+str(doYolo))
     # start YOLO experiment
     # Yolo Params is a list of dictionaries with all possible parameters
-    yoloParams = makeParamDicts(["scale", "mosaic"],[[0.3,1.0,1.5],[0.0,0.3,0.7,1.0]]) if doYolo else []
+    yoloParams = makeParamDicts(["scale", "mosaic"],[[0.15,0.45],[0.0,0.3,0.7,1.0]]) if doYolo else []
 
     # Print first line of results file
     if yoloParams != []:
@@ -254,14 +256,18 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
     num_classes = 2
     proportion = conf["Train_Perc"]/100
 
-    print("creating dataset in experiment")
-    dataset = ODDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
-    print("dataset test in experiment")
-    dataset_test = ODDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform())
+    
+    if doPytorchModels: 
+        print("creating dataset in experiment")
+        dataset = ODDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
+        print("Experiments, train dataset length "+str(len(dataset) ))
+
+    if doPytorchModels:
+        print("dataset test in experiment")
+        dataset_test = ODDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform())
     #dataset = dataset_test = None # debugging purposes
 
-    print("Experiments, train dataset length "+str(len(dataset) ))
-
+    
     frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["fasterrcnn","maskrcnn","ssd","fcos","retinanet","convnextmaskrcnn"],[0.05,0.1,0.25,0.5],[0.25,0.5,0.75],[0.3,0.5,0.7,0.8,0.9]]) if doPytorchModels else []
     #frcnnParams = makeParamDicts(["modelType","score", "nms", "predconf"],[["maskrcnn"],[0.25],[0.5],[0.7]]) if doPytorchModels else []
 
@@ -307,6 +313,81 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False):
             print("some sort of value error")            
         except:
             print("Unexpected error:", sys.exc_info()[0])
+
+
+    # Prepare DETR parameter grid
+    detrParams = makeParamDicts(["lr","batch_size","predconf"], [[1e-5,5e-5],[1,2],[0.3,0.5]]) if doDETR else []
+
+    if detrParams != []:
+        # prepare DETR dataset
+        detr_dataset = ODDETRDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
+
+        # write header
+        for k in detrParams[0].keys():
+            f.write(str(k)+",")
+        f.write("PRECISION,RECALL,OPREC,OREC,TrainT,TestT\n")
+
+    for tParams in detrParams:
+        # filename including DETR + params + epochs
+        filePath = "DETR_exp" + paramsDictToString(tParams, forFileName=True) + "Epochs" + str(conf["ep"]) + ".pth"
+        print("testing params "+str(tParams)+" with filePath "+str(filePath))
+
+        try:
+            trainAgain = not Path(filePath).is_file()
+            print("Training again "+str(trainAgain)+" "+str(filePath))
+
+            start = time.time()
+            if conf["Train"] or not trainAgain:
+                # train DETR
+                model = train_DETR(
+                    conf=conf,
+                    datasrc=detr_dataset,
+                    prefix="DETR_exp_",
+                    params={
+                        "file_path": filePath,
+                        "trainAgain": trainAgain,
+                        "num_epochs": conf["ep"],
+                        "batch_size": tParams["batch_size"],
+                        "lr": tParams["lr"],
+                        "device": device
+                    },file_path = filePath
+                )
+            end = time.time()
+            trainTime = end - start
+
+            # prediction
+            start = time.time()
+            resFileRoute = "DETR_exp"+paramsDictToString(tParams)
+
+            prec, rec, oprec, orec = predict_DETR(
+                dataset_test=ODDETRDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform()),
+                model=model,
+                processor=DetrImageProcessor.from_pretrained("facebook/detr-resnet-50"),
+                device=device,
+                predConfidence=tParams["predconf"],
+                predFolder=os.path.join(conf["Pred_dir"], resFileRoute),
+                origFolder=os.path.join(conf["TV_dir"],conf["Test_dir"],"images")
+            )
+            end = time.time()
+            testTime = end - start
+
+            # write results
+            for k,v in tParams.items():
+                f.write(str(v)+",")
+            f.write(f"{prec},{rec},{oprec},{orec},{trainTime},{testTime}\n")
+            f.flush()
+
+        except Exception as e:
+            print(e)
+            f.write("problem with training "+str(e)+"\n")
+            f.flush()
+        except ValueError:
+            print("some sort of value error")            
+        except:
+            print("Unexpected error:", sys.exc_info()[0])
+
+
+
     f.close()
 
 
@@ -325,4 +406,4 @@ if __name__ == "__main__":
     conf = read_config(configFile)
     print(conf)
 
-    DLExperiment(conf, doYolo = True , doPytorchModels = False)
+    DLExperiment(conf, doYolo = False , doPytorchModels = False, doDETR = True)

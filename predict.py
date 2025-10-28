@@ -22,7 +22,9 @@ from torchvision.transforms.functional import to_pil_image
 
 import sys
 import time
-from PIL import Image
+from PIL import Image, ImageDraw
+from tqdm import tqdm
+
 
 os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = pow(2,40).__str__()
 
@@ -267,6 +269,129 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     print("global Recall (overlap) "+str(rec))
 
     return sum(dScore) / len(dScore), sum(invScore) / len(invScore) , prec, rec
+
+
+
+def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5, predFolder=None, origFolder=None):
+    """
+    Run predictions with a trained DETR model and compute metrics.
+
+    Parameters
+    ----------
+    dataset_test : ODDETRDataset
+        Dataset to evaluate.
+    model : HuggingFace DETR model
+    processor : DetrImageProcessor
+    device : torch.device
+    predConfidence : float
+        Threshold for detection confidence.
+    predFolder : str
+        Optional folder to save images with predicted boxes.
+    origFolder : str
+        Optional folder of original images for visualization.
+
+    Returns
+    -------
+    prec, rec, oprec, orec : float
+        Precision, recall, object-level precision, object-level recall
+    """
+    print("starting predictDETR")
+    if device is None:
+        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+    model.eval()
+    model.to(device)
+
+    all_preds = []
+    all_gts = []
+
+    tp_total = 0
+    fp_total = 0
+    fn_total = 0
+    object_tp = 0
+    object_fn = 0
+    object_fp = 0
+
+    def iou(boxA, boxB):
+        # compute intersection
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+        interArea = max(0, xB - xA) * max(0, yB - yA)
+        boxAArea = (boxA[2]-boxA[0])*(boxA[3]-boxA[1])
+        boxBArea = (boxB[2]-boxB[0])*(boxB[3]-boxB[1])
+        unionArea = boxAArea + boxBArea - interArea
+        return interArea / unionArea if unionArea > 0 else 0
+
+    for i in tqdm(range(len(dataset_test))):
+        img, target = dataset_test[i]
+        pixel_values = processor(images=img, return_tensors="pt", do_rescale=False)["pixel_values"].to(device)
+
+        with torch.no_grad():
+            outputs = model(pixel_values=pixel_values)
+            processed = processor.post_process_object_detection(outputs, threshold=predConfidence)[0]
+
+        pred_boxes = processed["boxes"].cpu().numpy()
+        pred_scores = processed["scores"].cpu().numpy()
+        gt_boxes = np.array([ann["bbox"] for ann in target["annotations"]]) if target["annotations"] else np.zeros((0,4))
+
+        matched_gt = set()
+        matched_pred = set()
+
+        # evaluate object-level precision/recall
+        for j, gt in enumerate(gt_boxes):
+            best_iou = 0
+            best_idx = -1
+            for k, pred in enumerate(pred_boxes):
+                if k in matched_pred:
+                    continue
+                cur_iou = iou(gt, pred)
+                if cur_iou > best_iou:
+                    best_iou = cur_iou
+                    best_idx = k
+            if best_iou >= 0.5:
+                tp_total += 1
+                object_tp += 1
+                matched_pred.add(best_idx)
+                matched_gt.add(j)
+            else:
+                fn_total += 1
+                object_fn += 1
+
+        # remaining unmatched predictions are false positives
+        for k in range(len(pred_boxes)):
+            if k not in matched_pred:
+                fp_total += 1
+                object_fp += 1
+
+        # optional visualization
+        if predFolder is not None:
+            os.makedirs(predFolder, exist_ok=True)
+            img_vis = Image.fromarray(np.array(img)).convert("RGB")
+            draw = ImageDraw.Draw(img_vis)
+            for box in pred_boxes:
+                draw.rectangle(list(box), outline="red", width=2)
+            for ann in target["annotations"]:
+                x, y, w, h = ann["bbox"]
+                draw.rectangle([x, y, x+w, y+h], outline="green", width=1)
+            img_vis.save(os.path.join(predFolder, f"pred_{i}.png"))
+
+    # compute metrics
+    precision = tp_total / (tp_total + fp_total) if (tp_total + fp_total) > 0 else 0
+    recall = tp_total / (tp_total + fn_total) if (tp_total + fn_total) > 0 else 0
+    object_precision = object_tp / (object_tp + object_fp) if (object_tp + object_fp) > 0 else 0
+    object_recall = object_tp / (object_tp + object_fn) if (object_tp + object_fn) > 0 else 0
+
+    print("global Precision "+str(precision))
+    print("global Recall "+str(recall))
+
+    print("object Precision "+str(object_precision))
+    print("object Recall "+str(object_recall))
+
+
+    return precision, recall, object_precision, object_recall
+
 
 @torch.no_grad()
 def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):

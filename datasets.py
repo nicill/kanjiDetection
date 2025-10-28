@@ -302,6 +302,64 @@ class ODDataset(Dataset):
         return the information about how everything was sliced
         """
         return self.slicesToImages
+    
+
+
+class ODDETRDataset(ODDataset):
+    """
+    Modified ODDataset that returns data in COCO-style format
+    for use with HuggingFace DETR (DetrImageProcessor).
+    """
+
+    def __getitem__(self, idx):
+        img_path = self.imageNameList[idx]
+        mask_path = self.maskNameList[idx]
+        img = Image.open(img_path).convert("RGB")
+
+        mask = np.array(Image.open(mask_path))
+        numLabels, labelIm, stats, centroids = cv2.connectedComponentsWithStats(255 - mask)
+
+        obj_ids = np.unique(labelIm)[1:]  # skip background
+        masks = labelIm == obj_ids[:, None, None]
+
+        annotations = []
+        for i in range(len(obj_ids)):
+            pos = np.nonzero(masks[i])
+            if pos[0].size == 0 or pos[1].size == 0:
+                continue  # skip empty masks (avoids missing area/bbox)
+            xmin = np.min(pos[1])
+            xmax = np.max(pos[1])
+            ymin = np.min(pos[0])
+            ymax = np.max(pos[0])
+            w, h = xmax - xmin, ymax - ymin
+
+            # Skip degenerate boxes (zero or negative area)
+            if w <= 1 or h <= 1:
+                continue
+
+            area = float(w * h)
+            bbox = [float(xmin), float(ymin), float(w), float(h)]
+
+            annotations.append({
+                "bbox": bbox,
+                "area": area,
+                "category_id": 0,  # single class
+                "iscrowd": 0
+            })
+
+        if len(annotations) == 0:
+            annotations = [{
+                "bbox": [0.0, 0.0, 1.0, 1.0],
+                "area": 1.0,
+                "category_id": 0,
+                "iscrowd": 0
+            }]
+
+        image = np.array(img)
+        target = {"annotations": annotations}
+
+        return image, target
+    
 
 
 if __name__ == '__main__':

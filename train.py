@@ -36,6 +36,9 @@ from torchvision.models import (
     ConvNeXt_Tiny_Weights, ConvNeXt_Small_Weights, ConvNeXt_Base_Weights,
     ConvNeXt_Large_Weights)
 
+from transformers import DetrForObjectDetection, DetrImageProcessor
+import time
+
 
 torch.backends.cudnn.benchmark = True
 
@@ -162,6 +165,81 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     #            scale = scVal, mosaic = mosVal)
     results = model.val(project=resfolder,name=valfolder,save_json=True)
     # fuck it, not writing the results to disk
+
+# New function: train_DETR
+def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path = ""):
+
+    params = {} if params is None else params
+
+    epochs = params.get("num_epochs", conf.get("ep", 10))
+
+    processor_name = params.get("processor_name", "facebook/detr-resnet-50")
+    trainAgain = params.get("trainAgain", True)
+    device = params.get("device", torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
+    batch_size = params.get("batch_size", 1)
+    lr = params.get("lr", 1e-5)
+    weight_decay = params.get("weight_decay", 1e-4)
+
+    print(f"[DETR] results -> {file_path}, trainAgain={trainAgain}, device={device}, epochs={epochs}")
+
+    processor = DetrImageProcessor.from_pretrained(processor_name)
+    if trainAgain:
+        model = DetrForObjectDetection.from_pretrained(processor_name)
+    else:
+        model = DetrForObjectDetection.from_pretrained(processor_name)
+        if os.path.exists(file_path):
+            state = torch.load(file_path, map_location='cpu')
+            model.load_state_dict(state)
+    model.to(device)
+
+    data_loader = torch.utils.data.DataLoader(
+        datasrc,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=collate_fn
+    )
+
+    # Optimizer & scheduler
+    params_to_optimize = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(params_to_optimize, lr=lr, weight_decay=weight_decay)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=params.get("lr_step", 3), gamma=0.1)
+
+    if trainAgain:
+        model.train()
+        for epoch in range(epochs):
+            total_loss = 0.0
+            for images, targets in data_loader:
+                imgs = list(images)
+                annotations = [{"image_id": i, "annotations": t["annotations"]} for i, t in enumerate(targets)]
+
+                encoding = processor(images=imgs, annotations=annotations, return_tensors="pt", do_rescale=False)
+                pixel_values = encoding["pixel_values"].to(device)
+                labels = encoding["labels"]
+
+                hf_labels = [{k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k,v in lab.items()} for lab in labels]
+
+                outputs = model(pixel_values=pixel_values, labels=hf_labels)
+                loss = outputs.loss if outputs.loss is not None else sum(outputs.loss_dict.values())
+
+                optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
+                optimizer.step()
+                total_loss += loss.item()
+
+            lr_scheduler.step()
+            print(f"[DETR] Epoch {epoch+1}/{epochs} - avg loss: {total_loss/len(data_loader):.6f}")
+
+        torch.save(model.state_dict(), file_path)
+        print(f"[DETR] Training finished, saved to {file_path}")
+    else:
+        model.eval()
+        print(f"[DETR] Skipping training, loaded weights from {file_path} (if existed).")
+
+    return model
+
+
+
 
 def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', min_size=224, max_size=1333):
     backbone = convnext_fpn_backbone(backbone_name=backbone_name)
