@@ -280,18 +280,55 @@ def boxesFound(im1, im2, percentage = True, verbose = False):
     else:
         return (count,totalBoxes)
 
+def boxListEvaluation(bPred, bGT, th=0.5):
+    #Compute TP, FP, FN based on IoU matching between predicted and GT boxes.
+    #Each GT can only be matched once to its best prediction.
+    def iou(b1, b2):
+        x1_min, y1_min, x1_max, y1_max = b1
+        x2_min, y2_min, x2_max, y2_max = b2
+
+        xi1, yi1 = max(x1_min, x2_min), max(y1_min, y2_min)
+        xi2, yi2 = min(x1_max, x2_max), min(y1_max, y2_max)
+        inter_w, inter_h = max(0, xi2 - xi1), max(0, yi2 - yi1)
+        inter_area = inter_w * inter_h
+        union_area = ((x1_max - x1_min)*(y1_max - y1_min) +
+                      (x2_max - x2_min)*(y2_max - y2_min) -
+                      inter_area)
+        return inter_area / union_area if union_area > 0 else 0.0
+
+    if len(bGT) == 0:
+        return 0, len(bPred), 0
+    if len(bPred) == 0:
+        return 0, 0, len(bGT)
+
+    matched_gt = set()
+    TP = 0
+
+    for pred_box in bPred:
+        ious = [iou(pred_box, gt_box) for gt_box in bGT]
+        max_iou = max(ious)
+        max_idx = np.argmax(ious)
+        if max_iou >= th and max_idx not in matched_gt:
+            matched_gt.add(max_idx)
+            TP += 1
+
+    FP = len(bPred) - TP
+    FN = len(bGT) - TP
+    return TP, FP, FN
+
+#previous version of this function had some problems with recall
+"""
 def boxListEvaluation(bPred, bGT,th = 0.5):
-    """
-        receives two lists of boxes (predicted and ground truth)
-        in x1,y1,x2,y2 format and outputs number of TP, FP, FN
-        in terms of overlap percentage
-    """
+        #receives two lists of boxes (predicted and ground truth)
+        #in x1,y1,x2,y2 format and outputs number of TP, FP, FN
+        #in terms of overlap percentage
+    # Dictionary that contains the boxes in the ground truth that have been overlapped by a predicted box
+    tpDict = {}
+
     def isTrueP(b,gtB):
-        """
-            goes over all boxes in the ground truth and checks
-            if they overlap with the current box more than the threshold
-            store them in a dictionary
-        """
+            #goes over all boxes in the ground truth and checks
+            #if they overlap with the current box more than the threshold
+            #store them in a dictionary
         for boxGT in gtB:
             op = iou(b,boxGT)
             #print("overlap percentage "+str(op))
@@ -300,12 +337,9 @@ def boxListEvaluation(bPred, bGT,th = 0.5):
 
 
     def iou(b1, b2):
-        """
-        Compute IoU between two boxes.
-
-        b1: list or tuple [x1_min, y1_min, x1_max, y1_max]
-        b2: list or tuple [x2_min, y2_min, x2_max, y2_max]
-        """
+        #Compute IoU between two boxes.
+        #b1: list or tuple [x1_min, y1_min, x1_max, y1_max]
+        #b2: list or tuple [x2_min, y2_min, x2_max, y2_max]
         x1_min, y1_min, x1_max, y1_max = b1
         x2_min, y2_min, x2_max, y2_max = b2
 
@@ -331,15 +365,6 @@ def boxListEvaluation(bPred, bGT,th = 0.5):
 
         return inter_area / union_area
 
-    """
-    print("predicted boxes \n")
-    print(bPred)
-
-    print("\nGT boxes!!!!\n")
-    print(bGT)
-    """
-    # Dictionary that contains the boxes in the ground truth that have been overlapped by a predicted box
-    tpDict = {}
     for box in bPred:
         isTrueP(box,bGT) # this function already updates the tpDict
     TP = len(tpDict.keys()) # we consider the number of true positives to be the number of ground truth boxes caught by predictions, any box caught more than once is only counted once
@@ -352,6 +377,7 @@ def boxListEvaluation(bPred, bGT,th = 0.5):
     #precision = num_tp/len(bPred) if len(bPred) > 0 else 0
     #print("boxlistEval found "+str(TP)+" missed "+str(FN))
     return TP, FP, FN
+"""    
 
 def boxListEvaluationCentroids(bPred, bGT):
     """

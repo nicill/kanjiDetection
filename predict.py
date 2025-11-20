@@ -271,126 +271,279 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     return sum(dScore) / len(dScore), sum(invScore) / len(invScore) , prec, rec
 
 
-
-def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5, predFolder=None, origFolder=None):
+@torch.no_grad()
+def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5, 
+                 predFolder=None, origFolder=None, max_detections=100, resize=True):
     """
-    Run predictions with a trained DETR model and compute metrics.
-
-    Parameters
-    ----------
-    dataset_test : ODDETRDataset
-        Dataset to evaluate.
-    model : HuggingFace DETR model
-    processor : DetrImageProcessor
-    device : torch.device
-    predConfidence : float
-        Threshold for detection confidence.
-    predFolder : str
-        Optional folder to save images with predicted boxes.
-    origFolder : str
-        Optional folder of original images for visualization.
-
-    Returns
-    -------
-    prec, rec, oprec, orec : float
-        Precision, recall, object-level precision, object-level recall
+    DETR inference with proper coordinate transformation.
+    
+    Key insight: DetrImageProcessor resizes maintaining aspect ratio.
+    - If target size is 800, shortest edge becomes 800
+    - Normalized coordinates are relative to the RESIZED image
+    - We must scale back to original dimensions
     """
-    print("starting predictDETR")
+    from tqdm import tqdm
+
+    print("starting predict_DETR (pytorch-style pipeline)")
+
     if device is None:
         device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
+    data_loader = torch.utils.data.DataLoader(
+        dataset_test,
+        batch_size=1,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
+
+    print("Testing Dataset Length " + str(len(dataset_test)))
+    Path(os.path.join(predFolder, "FULL")).mkdir(parents=True, exist_ok=True)
+
+    n_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    cpu_device = torch.device("cpu")
     model.eval()
-    model.to(device)
 
-    all_preds = []
-    all_gts = []
+    totalTP, totalFP, totalFN = 0, 0, 0
+    precList, recList = [], []
+    dScore, invScore = [], []
+    count = 0
 
-    tp_total = 0
-    fp_total = 0
-    fn_total = 0
-    object_tp = 0
-    object_fn = 0
-    object_fp = 0
+    with torch.no_grad():
+        for ind, (images, targets) in enumerate(data_loader):
+            
+            imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
+            
+            # Get original image as numpy array
+            try:
+                imToStore = np.ascontiguousarray(images[0].permute(1, 2, 0).cpu().numpy())
+            except Exception:
+                imToStore = np.ascontiguousarray(np.array(images[0]))
 
-    def iou(boxA, boxB):
-        # compute intersection
-        xA = max(boxA[0], boxB[0])
-        yA = max(boxA[1], boxB[1])
-        xB = min(boxA[2], boxB[2])
-        yB = min(boxA[3], boxB[3])
-        interArea = max(0, xB - xA) * max(0, yB - yA)
-        boxAArea = (boxA[2]-boxA[0])*(boxA[3]-boxA[1])
-        boxBArea = (boxB[2]-boxB[0])*(boxB[3]-boxB[1])
-        unionArea = boxAArea + boxBArea - interArea
-        return interArea / unionArea if unionArea > 0 else 0
+            # Ensure uint8 for saving
+            if imToStore.dtype != np.uint8:
+                if imToStore.max() <= 1.0:
+                    imToStore = (imToStore * 255).astype(np.uint8)
 
-    for i in tqdm(range(len(dataset_test))):
-        img, target = dataset_test[i]
-        pixel_values = processor(images=img, return_tensors="pt", do_rescale=False)["pixel_values"].to(device)
+            orig_height, orig_width = imToStore.shape[:2]
 
-        with torch.no_grad():
+            # Process through DETR processor
+            img_for_processor = np.array(imToStore) if not isinstance(imToStore, np.ndarray) else imToStore
+            encoding = processor(images=img_for_processor, return_tensors="pt", do_rescale=True).to(device)
+            pixel_values = encoding["pixel_values"]
+            
+            # Get processed dimensions
+            batch_size, channels, proc_height, proc_width = pixel_values.shape
+
+            # Run model
             outputs = model(pixel_values=pixel_values)
-            processed = processor.post_process_object_detection(outputs, threshold=predConfidence)[0]
 
-        pred_boxes = processed["boxes"].cpu().numpy()
-        pred_scores = processed["scores"].cpu().numpy()
-        gt_boxes = np.array([ann["bbox"] for ann in target["annotations"]]) if target["annotations"] else np.zeros((0,4))
+            # Extract predictions
+            logits = outputs.logits[0]  # [num_queries, num_classes+1]
+            boxes = outputs.pred_boxes[0]  # [num_queries, 4] in normalized cxcywh
+            
+            # Convert to probabilities
+            # For single-class: logits is [num_queries, 2] where dim=0 is object, dim=1 is no-object
+            probs = logits.softmax(-1)
+            
+            # Get probability of object class (not no-object)
+            # For num_labels=1, index 0 is the object class
+            scores = probs[:, 0]  # Probability of being an object (class 0)
+            labels = torch.zeros_like(scores, dtype=torch.long)  # All predictions are class 0
 
-        matched_gt = set()
-        matched_pred = set()
+            # Filter by confidence threshold
+            keep = scores > predConfidence
+            scores = scores[keep]
+            labels = labels[keep]
+            boxes = boxes[keep]
 
-        # evaluate object-level precision/recall
-        for j, gt in enumerate(gt_boxes):
-            best_iou = 0
-            best_idx = -1
-            for k, pred in enumerate(pred_boxes):
-                if k in matched_pred:
-                    continue
-                cur_iou = iou(gt, pred)
-                if cur_iou > best_iou:
-                    best_iou = cur_iou
-                    best_idx = k
-            if best_iou >= 0.5:
-                tp_total += 1
-                object_tp += 1
-                matched_pred.add(best_idx)
-                matched_gt.add(j)
+            # === DIAGNOSTIC (first 5 tiles) ===
+            if ind < 5:
+                print(f"\n{'='*70}")
+                print(f"[DEBUG {ind}] Tile: {imageName}")
+                print(f"{'='*70}")
+                print(f"Original tile (W×H): {orig_width}×{orig_height}")
+                print(f"Processed (W×H): {proc_width}×{proc_height}")
+                print(f"Predictions above threshold ({predConfidence}): {keep.sum().item()} / {len(keep)}")
+                
+                if len(boxes) > 0:
+                    print(f"\nFirst 3 predictions (normalized cxcywh):")
+                    for i, (box, score, label) in enumerate(zip(boxes[:3], scores[:3], labels[:3])):
+                        print(f"  [{i}] box={box.cpu().numpy()}, score={score.item():.3f}, label={label.item()}")
+
+            # ===== COORDINATE TRANSFORMATION =====
+            # Step 1: Convert normalized cxcywh to normalized xyxy
+            boxes_norm = torch.zeros_like(boxes)
+            boxes_norm[:, 0] = boxes[:, 0] - boxes[:, 2] / 2  # x1 = cx - w/2
+            boxes_norm[:, 1] = boxes[:, 1] - boxes[:, 3] / 2  # y1 = cy - h/2
+            boxes_norm[:, 2] = boxes[:, 0] + boxes[:, 2] / 2  # x2 = cx + w/2
+            boxes_norm[:, 3] = boxes[:, 1] + boxes[:, 3] / 2  # y2 = cy + h/2
+            
+            # Step 2: Denormalize to processed image coordinates
+            boxes_proc = torch.zeros_like(boxes_norm)
+            boxes_proc[:, 0] = boxes_norm[:, 0] * proc_width
+            boxes_proc[:, 1] = boxes_norm[:, 1] * proc_height
+            boxes_proc[:, 2] = boxes_norm[:, 2] * proc_width
+            boxes_proc[:, 3] = boxes_norm[:, 3] * proc_height
+            
+            # Step 3: Scale to original image coordinates
+            # The processor maintains aspect ratio, so we need to figure out the scaling
+            scale_x = orig_width / proc_width
+            scale_y = orig_height / proc_height
+            
+            boxes_orig = torch.zeros_like(boxes_proc)
+            boxes_orig[:, 0] = boxes_proc[:, 0] * scale_x
+            boxes_orig[:, 1] = boxes_proc[:, 1] * scale_y
+            boxes_orig[:, 2] = boxes_proc[:, 2] * scale_x
+            boxes_orig[:, 3] = boxes_proc[:, 3] * scale_y
+
+            if ind < 5:
+                print(f"\nCoordinate transformation:")
+                print(f"  Scale factors: x={scale_x:.4f}, y={scale_y:.4f}")
+                if len(boxes_orig) > 0:
+                    print(f"\nFirst 3 predictions (original tile xyxy):")
+                    for i, box in enumerate(boxes_orig[:3]):
+                        x1, y1, x2, y2 = box.cpu().numpy()
+                        w, h = x2-x1, y2-y1
+                        print(f"  [{i}] [{x1:.1f}, {y1:.1f}, {x2:.1f}, {y2:.1f}] (w={w:.1f}, h={h:.1f})")
+
+            # Clip to image boundaries
+            boxes_orig[:, 0] = boxes_orig[:, 0].clamp(0, orig_width)
+            boxes_orig[:, 1] = boxes_orig[:, 1].clamp(0, orig_height)
+            boxes_orig[:, 2] = boxes_orig[:, 2].clamp(0, orig_width)
+            boxes_orig[:, 3] = boxes_orig[:, 3].clamp(0, orig_height)
+
+            # Filter out degenerate boxes
+            widths = boxes_orig[:, 2] - boxes_orig[:, 0]
+            heights = boxes_orig[:, 3] - boxes_orig[:, 1]
+            valid = (widths > 1) & (heights > 1)
+            
+            boxes_orig = boxes_orig[valid]
+            labels = labels[valid]
+            scores = scores[valid]
+
+            # Apply NMS to remove duplicate detections
+            if len(boxes_orig) > 0:
+                from torchvision.ops import nms
+                # NMS expects boxes in xyxy format (which we have)
+                nms_threshold = 0.5  # You can make this a parameter
+                keep_nms = nms(boxes_orig, scores, nms_threshold)
+                boxes_orig = boxes_orig[keep_nms]
+                labels = labels[keep_nms]
+                scores = scores[keep_nms]
+            
+            # Limit number of detections after NMS
+            if len(boxes_orig) > max_detections:
+                topk = torch.topk(scores, max_detections)
+                boxes_orig = boxes_orig[topk.indices]
+                labels = labels[topk.indices]
+                scores = scores[topk.indices]
+
+            filtered_boxes = boxes_orig.to(cpu_device)
+            filtered_labels = labels.to(cpu_device)
+            filtered_scores = scores.to(cpu_device)
+            
+            if ind < 5:
+                print(f"After NMS: {len(filtered_boxes)} predictions")
+
+            # Prepare GT boxes in xyxy format
+            tile_gt_boxes = []
+            if len(targets) > 0 and "annotations" in targets[0]:
+                for ann in targets[0]["annotations"]:
+                    bx = ann["bbox"]  # [x, y, w, h]
+                    x1, y1 = float(bx[0]), float(bx[1])
+                    x2, y2 = x1 + float(bx[2]), y1 + float(bx[3])
+                    tile_gt_boxes.append([x1, y1, x2, y2])
+            
+            if ind < 5:
+                if len(tile_gt_boxes) > 0:
+                    print(f"\nGround truth (original tile xyxy):")
+                    for i, box in enumerate(tile_gt_boxes[:3]):
+                        x1, y1, x2, y2 = box
+                        w, h = x2-x1, y2-y1
+                        print(f"  [{i}] [{x1:.1f}, {y1:.1f}, {x2:.1f}, {y2:.1f}] (w={w:.1f}, h={h:.1f})")
+                else:
+                    print(f"\nNo ground truth annotations for this tile")
+                print(f"{'='*70}\n")
+
+            gt_boxes_tensor = torch.tensor(tile_gt_boxes, dtype=torch.float32) if tile_gt_boxes else torch.empty((0,4), dtype=torch.float32)
+
+            # Compute metrics if GT exists
+            boxCatAndCoords = []
+            if gt_boxes_tensor.shape[0] > 0 and len(filtered_boxes) > 0:
+                pred_list = [tuple(b.tolist()) for b in filtered_boxes]
+                gt_list = [tuple(b) for b in tile_gt_boxes]
+
+                TP, FP, FN = boxListEvaluation(pred_list, gt_list)
+                totalTP += TP
+                totalFP += FP
+                totalFN += FN
+
+                dS, invS = boxListEvaluationCentroids(pred_list, gt_list)
+                dScore.append(dS)
+                invScore.append(invS)
+
+                thisPrec = 0 if (TP + FP) == 0 else TP/(TP+FP)
+                thisRec = 0 if (TP + FN) == 0 else TP/(TP+FN)
+                precList.append(thisPrec)
+                recList.append(thisRec)
+
+                for lab, box in zip(filtered_labels, filtered_boxes):
+                    lab_val = int(lab.tolist()) if isinstance(lab, torch.Tensor) else int(lab)
+                    bx = tuple(map(float, box.tolist()))
+                    boxCatAndCoords.append((lab_val,) + bx)
+            elif gt_boxes_tensor.shape[0] > 0:
+                # GT exists but no predictions
+                totalFN += len(tile_gt_boxes)
+
+            # Create prediction mask from boxes
+            if len(filtered_boxes) > 0:
+                predMask = maskFromBoxes([tuple(b.tolist()) for b in filtered_boxes], imToStore.shape)
             else:
-                fn_total += 1
-                object_fn += 1
+                predMask = np.ones((imToStore.shape[0], imToStore.shape[1]), dtype=np.uint8)*255
 
-        # remaining unmatched predictions are false positives
-        for k in range(len(pred_boxes)):
-            if k not in matched_pred:
-                fp_total += 1
-                object_fp += 1
+            # Save outputs
+            if predFolder is not None:
+                os.makedirs(predFolder, exist_ok=True)
+                cv2.imwrite(os.path.join(predFolder, imageName), cv2.cvtColor(imToStore, cv2.COLOR_RGB2BGR))
+                cv2.imwrite(os.path.join(predFolder, "PREDMASK"+imageName), predMask)
+                boxCoordsToFile(os.path.join(predFolder, "BOXCOORDS"+imageName[:-4]+".txt"), boxCatAndCoords)
 
-        # optional visualization
-        if predFolder is not None:
-            os.makedirs(predFolder, exist_ok=True)
-            img_vis = Image.fromarray(np.array(img)).convert("RGB")
-            draw = ImageDraw.Draw(img_vis)
-            for box in pred_boxes:
-                draw.rectangle(list(box), outline="red", width=2)
-            for ann in target["annotations"]:
-                x, y, w, h = ann["bbox"]
-                draw.rectangle([x, y, x+w, y+h], outline="green", width=1)
-            img_vis.save(os.path.join(predFolder, f"pred_{i}.png"))
+            count += 1
 
-    # compute metrics
-    precision = tp_total / (tp_total + fp_total) if (tp_total + fp_total) > 0 else 0
-    recall = tp_total / (tp_total + fn_total) if (tp_total + fn_total) > 0 else 0
-    object_precision = object_tp / (object_tp + object_fp) if (object_tp + object_fp) > 0 else 0
-    object_recall = object_tp / (object_tp + object_fn) if (object_tp + object_fn) > 0 else 0
+    # Rebuild full images/masks
+    for imageN, TileList in dataset_test.getSliceFileInfo().items():
+        rebuildImageFromTiles(imageN, TileList, predFolder, origFolder)
 
-    print("global Precision "+str(precision))
-    print("global Recall "+str(recall))
+    torch.set_num_threads(n_threads)
 
-    print("object Precision "+str(object_precision))
-    print("object Recall "+str(object_recall))
+    # Print metrics
+    print("\n" + "="*70)
+    print("EVALUATION RESULTS")
+    print("="*70)
+    if len(dScore) > 0 and len(precList) > 0:
+        print(f"Centroid-based Precision: {sum(dScore)/len(dScore):.4f}")
+        print(f"Centroid-based Recall: {sum(invScore)/len(invScore):.4f}")
+        print(f"Overlap-based Precision (per-tile avg): {sum(precList)/len(precList):.4f}")
+        print(f"Overlap-based Recall (per-tile avg): {sum(recList)/len(recList):.4f}")
+    else:
+        print("No valid tile-level metrics (no GT or predictions matched)")
+
+    prec = 0 if (totalTP + totalFP) == 0 else totalTP/(totalTP+totalFP)
+    rec = 0 if (totalTP + totalFN) == 0 else totalTP/(totalTP+totalFN)
+    print(f"\nGlobal Overlap Metrics:")
+    print(f"  Precision: {prec:.4f}")
+    print(f"  Recall: {rec:.4f}")
+    print(f"  TP/FP/FN: {totalTP}/{totalFP}/{totalFN}")
+    print(f"  Total tiles: {count}")
+    print("="*70 + "\n")
+
+    return (sum(dScore)/len(dScore) if dScore else 0,
+            sum(invScore)/len(invScore) if invScore else 0,
+            prec, rec)
 
 
-    return precision, recall, object_precision, object_recall
+
 
 
 @torch.no_grad()

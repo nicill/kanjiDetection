@@ -166,78 +166,277 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     results = model.val(project=resfolder,name=valfolder,save_json=True)
     # fuck it, not writing the results to disk
 
-# New function: train_DETR
-def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path = ""):
 
+def diagnose_training_data(data_loader, processor, num_samples=3):
+    """
+    Diagnose training data format issues
+    """
+    print("\n" + "="*60)
+    print("DIAGNOSTIC: Checking Training Data Format")
+    print("="*60)
+    
+    for i, (images, targets) in enumerate(data_loader):
+        if i >= num_samples:
+            break
+            
+        print(f"\n--- Sample {i} ---")
+        
+        # Get original image
+        try:
+            img_np = images[0].permute(1, 2, 0).cpu().numpy()
+        except:
+            img_np = np.array(images[0])
+        
+        orig_h, orig_w = img_np.shape[:2]
+        print(f"Original image shape (HxW): {orig_h}x{orig_w}")
+        
+        # Get annotations BEFORE processor
+        if len(targets) > 0 and "annotations" in targets[0]:
+            raw_anns = targets[0]["annotations"]
+            print(f"Number of annotations: {len(raw_anns)}")
+            
+            # Check first few annotations
+            for j, ann in enumerate(raw_anns[:3]):
+                bbox = ann["bbox"]
+                print(f"  Ann {j}: bbox={bbox}, category={ann.get('category_id', 'N/A')}")
+                
+                # Verify bbox is valid
+                x, y, w, h = bbox
+                if x < 0 or y < 0 or w <= 0 or h <= 0:
+                    print(f"    ⚠️ WARNING: Invalid bbox coordinates!")
+                if x + w > orig_w or y + h > orig_h:
+                    print(f"    ⚠️ WARNING: Bbox extends beyond image! (img: {orig_w}x{orig_h})")
+        
+        # Process through processor
+        imgs = list(images)
+        annotations = [{"image_id": idx, "annotations": t["annotations"]} 
+                      for idx, t in enumerate(targets)]
+        
+        encoding = processor(images=imgs, annotations=annotations, 
+                           return_tensors="pt", do_rescale=True)
+        
+        pixel_values = encoding["pixel_values"]
+        proc_h, proc_w = pixel_values.shape[2], pixel_values.shape[3]
+        print(f"Processed image shape (HxW): {proc_h}x{proc_w}")
+        
+        # Check processed labels
+        labels = encoding["labels"]
+        if len(labels) > 0:
+            label = labels[0]
+            print(f"Processed label keys: {label.keys()}")
+            
+            if "boxes" in label:
+                boxes = label["boxes"]
+                print(f"  Boxes shape: {boxes.shape}")
+                print(f"  Boxes (first 3): {boxes[:3].tolist()}")
+                print(f"  Boxes format: {'normalized cxcywh' if boxes.max() <= 1.0 else 'absolute coordinates'}")
+                
+                # Check if boxes are reasonable
+                if boxes.max() > 1.0:
+                    print(f"    ⚠️ WARNING: Boxes should be normalized [0,1] but found max={boxes.max():.4f}")
+            
+            if "class_labels" in label:
+                class_labels = label["class_labels"]
+                print(f"  Class labels: {class_labels.tolist()}")
+        
+        print(f"  Pixel values range: [{pixel_values.min():.4f}, {pixel_values.max():.4f}]")
+    
+    print("\n" + "="*60)
+    print("End of Diagnostic")
+    print("="*60 + "\n")
+
+
+def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
+    """
+    Train DETR model with correct configuration for single-class detection.
+    
+    CRITICAL: Must configure model for num_labels=1 (single class) before training.
+    """
     params = {} if params is None else params
-
     epochs = params.get("num_epochs", conf.get("ep", 10))
-
     processor_name = params.get("processor_name", "facebook/detr-resnet-50")
     trainAgain = params.get("trainAgain", True)
     device = params.get("device", torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
     batch_size = params.get("batch_size", 1)
     lr = params.get("lr", 1e-5)
     weight_decay = params.get("weight_decay", 1e-4)
-
+    
     print(f"[DETR] results -> {file_path}, trainAgain={trainAgain}, device={device}, epochs={epochs}")
-
+    
     processor = DetrImageProcessor.from_pretrained(processor_name)
+    
     if trainAgain:
-        model = DetrForObjectDetection.from_pretrained(processor_name)
+        # CRITICAL FIX: Configure model for single-class detection
+        # Load base model
+        base_model = DetrForObjectDetection.from_pretrained(processor_name)
+        
+        # Get the original config and modify it
+        config = base_model.config
+        
+        # IMPORTANT: Set num_labels to 1 (single object class, not counting background)
+        # The model internally handles the "no-object" class
+        config.num_labels = 1
+        
+        print(f"[DETR] Configuring model with num_labels={config.num_labels}")
+        
+        # Create new model with correct configuration
+        from transformers import DetrConfig
+        model = DetrForObjectDetection(config)
+        
+        # Optionally: Initialize from pretrained weights (except the classification head)
+        # This helps with faster convergence
+        pretrained_dict = base_model.state_dict()
+        model_dict = model.state_dict()
+        
+        # Filter out classification head weights (they have wrong dimensions)
+        pretrained_dict = {
+            k: v for k, v in pretrained_dict.items() 
+            if k in model_dict and v.shape == model_dict[k].shape
+        }
+        
+        # Update model with compatible weights
+        model_dict.update(pretrained_dict)
+        model.load_state_dict(model_dict)
+        
+        print(f"[DETR] Initialized model with pretrained weights (except class head)")
     else:
-        model = DetrForObjectDetection.from_pretrained(processor_name)
+        # Load trained model
+        config = DetrConfig.from_pretrained(processor_name)
+        config.num_labels = 1
+        model = DetrForObjectDetection(config)
+        
         if os.path.exists(file_path):
             state = torch.load(file_path, map_location='cpu')
             model.load_state_dict(state)
+            print(f"[DETR] Loaded model from {file_path}")
+    
     model.to(device)
-
+    
     data_loader = torch.utils.data.DataLoader(
         datasrc,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=collate_fn
+        collate_fn=collate_fn_DETR_skip_empty
     )
-
+    
     # Optimizer & scheduler
     params_to_optimize = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(params_to_optimize, lr=lr, weight_decay=weight_decay)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=params.get("lr_step", 3), gamma=0.1)
-
+    
+    # For long training (50+ epochs), use a more gradual learning rate schedule
+    # Option 1: StepLR with multiple drops
+    if epochs >= 100:
+        # Drop LR every 1/4 of total epochs for very long training
+        step_size = max(epochs // 4, 25)
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, 
+            step_size=step_size,
+            gamma=0.1
+        )
+        print(f"[DETR] Using StepLR: dropping LR by 0.1x every {step_size} epochs")
+    else:
+        # For shorter training, drop at 1/3 point
+        step_size = max(epochs // 3, 5)
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, 
+            step_size=step_size,
+            gamma=0.1
+        )
+        print(f"[DETR] Using StepLR: dropping LR by 0.1x every {step_size} epochs")
+    
+    # Option 2 (alternative): Cosine annealing - uncomment to use instead
+    # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #     optimizer, 
+    #     T_max=epochs,
+    #     eta_min=lr * 0.01
+    # )
+    # print(f"[DETR] Using CosineAnnealingLR from {lr} to {lr*0.01}")
+    
     if trainAgain:
         model.train()
+        
+        # Training diagnostic (first batch only)
+        first_batch_checked = False
+        
         for epoch in range(epochs):
             total_loss = 0.0
-            for images, targets in data_loader:
+            num_batches = 0
+            
+            for batch_idx, (images, targets) in enumerate(data_loader):
                 imgs = list(images)
-                annotations = [{"image_id": i, "annotations": t["annotations"]} for i, t in enumerate(targets)]
-
-                encoding = processor(images=imgs, annotations=annotations, return_tensors="pt", do_rescale=False)
+                annotations = [
+                    {"image_id": i, "annotations": t["annotations"]} 
+                    for i, t in enumerate(targets)
+                ]
+                
+                # Process inputs
+                encoding = processor(
+                    images=imgs, 
+                    annotations=annotations, 
+                    return_tensors="pt", 
+                    do_rescale=True
+                )
+                
                 pixel_values = encoding["pixel_values"].to(device)
                 labels = encoding["labels"]
-
-                hf_labels = [{k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k,v in lab.items()} for lab in labels]
-
+                
+                # Move labels to device
+                hf_labels = [
+                    {k: (v.to(device) if isinstance(v, torch.Tensor) else v) 
+                     for k, v in lab.items()} 
+                    for lab in labels
+                ]
+                
+                # Diagnostic for first batch
+                if epoch == 0 and batch_idx == 0 and not first_batch_checked:
+                    print("\n" + "="*70)
+                    print("TRAINING DIAGNOSTIC (First Batch)")
+                    print("="*70)
+                    print(f"Model config: num_labels={model.config.num_labels}")
+                    print(f"Number of images: {len(imgs)}")
+                    print(f"Pixel values shape: {pixel_values.shape}")
+                    print(f"Number of targets: {len(hf_labels)}")
+                    if len(hf_labels) > 0:
+                        label = hf_labels[0]
+                        print(f"First target keys: {label.keys()}")
+                        if 'boxes' in label:
+                            print(f"  Boxes shape: {label['boxes'].shape}")
+                            print(f"  First 3 boxes: {label['boxes'][:3].tolist()}")
+                        if 'class_labels' in label:
+                            print(f"  Class labels: {label['class_labels'].tolist()}")
+                            print(f"  Unique classes: {label['class_labels'].unique().tolist()}")
+                    print("="*70 + "\n")
+                    first_batch_checked = True
+                
+                # Forward pass
                 outputs = model(pixel_values=pixel_values, labels=hf_labels)
                 loss = outputs.loss if outputs.loss is not None else sum(outputs.loss_dict.values())
-
+                
+                # Backward pass
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
                 optimizer.step()
+                
                 total_loss += loss.item()
-
+                num_batches += 1
+            
             lr_scheduler.step()
-            print(f"[DETR] Epoch {epoch+1}/{epochs} - avg loss: {total_loss/len(data_loader):.6f}")
-
+            avg_loss = total_loss / max(num_batches, 1)
+            
+            print(f"[DETR] Epoch {epoch+1}/{epochs} - avg loss: {avg_loss:.6f}")
+            if hasattr(outputs, 'loss_dict'):
+                loss_dict_str = ", ".join([f"{k}: {v.item():.4f}" for k, v in outputs.loss_dict.items()])
+                print(f"  Loss components: {loss_dict_str}")
+        
+        # Save model
         torch.save(model.state_dict(), file_path)
         print(f"[DETR] Training finished, saved to {file_path}")
     else:
         model.eval()
-        print(f"[DETR] Skipping training, loaded weights from {file_path} (if existed).")
-
+        print(f"[DETR] Using existing model from {file_path}")
+    
     return model
-
 
 
 
@@ -467,6 +666,44 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
 
 def collate_fn(batch):
     return tuple(zip(*batch))
+
+
+# Alternative: If you want to skip tiles with no annotations during training
+def collate_fn_DETR_skip_empty(batch):
+    """
+    Collate function that SKIPS samples with no annotations during training.
+    Use this if you want to avoid training on empty tiles.
+    """
+    filtered_batch = []
+    
+    for image, target in batch:
+        # Skip if no annotations
+        if "annotations" in target and len(target["annotations"]) > 0:
+            filtered_batch.append((image, target))
+    
+    # If all samples were empty, return a dummy batch
+    # (This shouldn't happen often with proper dataset filtering)
+    if len(filtered_batch) == 0:
+        print("WARNING: Empty batch after filtering, using first sample from original batch")
+        filtered_batch = [batch[0]]
+    
+    images = []
+    targets = []
+    
+    for image, target in filtered_batch:
+        if isinstance(image, torch.Tensor):
+            images.append(image)
+        else:
+            if isinstance(image, np.ndarray):
+                if image.ndim == 3 and image.shape[2] in [1, 3]:
+                    image = torch.from_numpy(image).permute(2, 0, 1)
+                else:
+                    image = torch.from_numpy(image)
+            images.append(image)
+        targets.append(target)
+    
+    return images, targets
+
 
 def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
     # load an instance segmentation model pre-trained on COCO

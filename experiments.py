@@ -315,30 +315,38 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
             print("Unexpected error:", sys.exc_info()[0])
 
 
-    # Prepare DETR parameter grid
-    detrParams = makeParamDicts(["lr","batch_size","predconf"], [[1e-5,5e-5],[1,2],[0.3,0.5]]) if doDETR else []
+
+    # === DETR experiment (train + test per parameter combination) ===
+    detrParams = makeParamDicts(
+        ["lr", "batch_size", "predconf","nms_iou", "max_detections", "resize"],
+        [[5e-6,1e-5], [4,8], [0.5], [0.5,0.7,0.9],[50], [800]]
+    ) if doDETR else []
 
     if detrParams != []:
-        # prepare DETR dataset
-        detr_dataset = ODDETRDataset(os.path.join(conf["TV_dir"],conf["Train_dir"]), True, conf["slice"], get_transform())
-
         # write header
         for k in detrParams[0].keys():
-            f.write(str(k)+",")
+            f.write(str(k) + ",")
         f.write("PRECISION,RECALL,OPREC,OREC,TrainT,TestT\n")
 
     for tParams in detrParams:
-        # filename including DETR + params + epochs
-        filePath = "DETR_exp" + paramsDictToString(tParams, forFileName=True) + "Epochs" + str(conf["ep"]) + ".pth"
-        print("testing params "+str(tParams)+" with filePath "+str(filePath))
+        filePath = (
+            "DETR_exp" + paramsDictToString(tParams, forFileName=True)
+            + "Epochs" + str(conf["ep"]) + ".pth"
+        )
+        print(f"[DETR] Testing params {tParams} with filePath {filePath}")
 
         try:
+            # train if needed
             trainAgain = not Path(filePath).is_file()
-            print("Training again "+str(trainAgain)+" "+str(filePath))
+            print(f"Training again? {trainAgain} ({filePath})")
 
             start = time.time()
-            if conf["Train"] or not trainAgain:
-                # train DETR
+            # is the training working properly?
+            if conf["Train"] or trainAgain:
+                detr_dataset = ODDETRDataset(
+                    os.path.join(conf["TV_dir"], conf["Train_dir"]),
+                    True, conf["slice"], get_transform()
+                )
                 model = train_DETR(
                     conf=conf,
                     datasrc=detr_dataset,
@@ -350,41 +358,51 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
                         "batch_size": tParams["batch_size"],
                         "lr": tParams["lr"],
                         "device": device
-                    },file_path = filePath
+                    },
+                    file_path=filePath
                 )
+            else:
+                model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50")
+                state = torch.load(filePath, map_location=device)
+                model.load_state_dict(state)
+                model.to(device)
             end = time.time()
             trainTime = end - start
 
-            # prediction
+            # === test this specific model ===
+            print(f"[DETR] Testing model {filePath}")
             start = time.time()
-            resFileRoute = "DETR_exp"+paramsDictToString(tParams)
-
             prec, rec, oprec, orec = predict_DETR(
-                dataset_test=ODDETRDataset(os.path.join(conf["TV_dir"],conf["Test_dir"]), True, conf["slice"], get_transform()),
+                dataset_test=ODDETRDataset(
+                    os.path.join(conf["TV_dir"], conf["Test_dir"]),
+                    True, conf["slice"], get_transform()
+                ),
                 model=model,
                 processor=DetrImageProcessor.from_pretrained("facebook/detr-resnet-50"),
                 device=device,
                 predConfidence=tParams["predconf"],
-                predFolder=os.path.join(conf["Pred_dir"], resFileRoute),
-                origFolder=os.path.join(conf["TV_dir"],conf["Test_dir"],"images")
+                max_detections=tParams["max_detections"],
+                resize=tParams["resize"],
+                predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
+                origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
             )
             end = time.time()
             testTime = end - start
 
             # write results
-            for k,v in tParams.items():
-                f.write(str(v)+",")
+            for k, v in tParams.items():
+                f.write(str(v) + ",")
             f.write(f"{prec},{rec},{oprec},{orec},{trainTime},{testTime}\n")
             f.flush()
 
         except Exception as e:
-            print(e)
-            f.write("problem with training "+str(e)+"\n")
+            print("[DETR] Error:", e)
+            f.write("problem with training " + str(e) + "\n")
             f.flush()
-        except ValueError:
-            print("some sort of value error")            
-        except:
-            print("Unexpected error:", sys.exc_info()[0])
+
+
+
+
 
 
 
@@ -407,3 +425,5 @@ if __name__ == "__main__":
     print(conf)
 
     DLExperiment(conf, doYolo = False , doPytorchModels = False, doDETR = True)
+    DLExperiment(conf, doYolo = False , doPytorchModels = True, doDETR = False)
+    #DLExperiment(conf, doYolo = True , doPytorchModels = False, doDETR = False)

@@ -185,8 +185,8 @@ class ODDataset(Dataset):
                     if im.shape[0] > slice or im.shape[1] > slice:raise Exception("ODDAtaset creator, wrongly presliced images")
                     # no need to slice, but the images are tiles that come from other images, need to store this in self.slicesToImages[
 
-                    cleanUpMask(mask, areaTH = 100)
-                    mask = cleanUpMaskBlackPixels(mask, im, areaTH = 100 )
+                    cleanUpMask(mask, areaTH = 200)
+                    mask = cleanUpMaskBlackPixels(mask, im, areaTH = 150 )
 
                     if np.sum(mask==0) > 100: # add only non-empty masks to the list of images and masks
                         #print(os.path.join(self.imageFolder,imageName)+" has boxes")
@@ -309,6 +309,9 @@ class ODDETRDataset(ODDataset):
     """
     Modified ODDataset that returns data in COCO-style format
     for use with HuggingFace DETR (DetrImageProcessor).
+    
+    CRITICAL: Returns images as PIL Images or numpy arrays,
+    and annotations in absolute pixel coordinates [x, y, w, h].
     """
 
     def __getitem__(self, idx):
@@ -326,14 +329,15 @@ class ODDETRDataset(ODDataset):
         for i in range(len(obj_ids)):
             pos = np.nonzero(masks[i])
             if pos[0].size == 0 or pos[1].size == 0:
-                continue  # skip empty masks (avoids missing area/bbox)
+                continue  # skip empty masks
+            
             xmin = np.min(pos[1])
             xmax = np.max(pos[1])
             ymin = np.min(pos[0])
             ymax = np.max(pos[0])
-            w, h = xmax - xmin, ymax - ymin
+            w, h = xmax - xmin + 1, ymax - ymin + 1  # +1 to include the boundary pixel
 
-            # Skip degenerate boxes (zero or negative area)
+            # Skip degenerate boxes
             if w <= 1 or h <= 1:
                 continue
 
@@ -347,19 +351,15 @@ class ODDETRDataset(ODDataset):
                 "iscrowd": 0
             })
 
-        if len(annotations) == 0:
-            annotations = [{
-                "bbox": [0.0, 0.0, 1.0, 1.0],
-                "area": 1.0,
-                "category_id": 0,
-                "iscrowd": 0
-            }]
-
+        # FIXED: Don't add dummy annotations for empty tiles
+        # The processor and training loop should handle empty annotation lists
+        # If you must have something, the training code should filter these out
+        
+        # Return as numpy array (preferred by DetrImageProcessor)
         image = np.array(img)
         target = {"annotations": annotations}
 
-        return image, target
-    
+        return image, target    
 
 
 if __name__ == '__main__':
