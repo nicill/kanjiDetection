@@ -19,12 +19,12 @@ from datasets import ODDataset,ODDETRDataset
 from config import read_config
 from predict import detectBlobsMSER,detectBlobsDOG
 from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
-from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel,train_DETR
+from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel,train_DETR, train_DeformableDETR
 
 from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2, buildTestingFromSingleFolderSakuma2NOGT
-from predict import predict_yolo, predict_pytorch, predict_DETR
+from predict import predict_yolo, predict_pytorch, predict_DETR, predict_DeformableDETR_FIXED
 
-from transformers import DetrForObjectDetection, DetrImageProcessor
+from transformers import DetrForObjectDetection, DetrImageProcessor, DeformableDetrImageProcessor
 
 def makeParamDicts(pars,vals):
     """
@@ -317,9 +317,10 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
 
 
     # === DETR experiment (train + test per parameter combination) ===
+    # possible model types DETR, DEFDETR
     detrParams = makeParamDicts(
-        ["lr", "batch_size", "predconf","nms_iou", "max_detections", "resize"],
-        [[5e-6,1e-5], [4,8], [0.5], [0.5,0.7,0.9],[50], [800]]
+        ["modelType","lr", "batch_size", "predconf","nms_iou", "max_detections", "resize"],
+        [["DETR"],[5e-6,3e-6], [8], [0.3,0.5,0.7], [0.3,0.5,0.7],[50], [800,1024]]
     ) if doDETR else []
 
     if detrParams != []:
@@ -335,18 +336,19 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
         )
         print(f"[DETR] Testing params {tParams} with filePath {filePath}")
 
-        try:
-            # train if needed
-            trainAgain = not Path(filePath).is_file()
-            print(f"Training again? {trainAgain} ({filePath})")
+        #try:
+        # train if needed
+        trainAgain = not Path(filePath).is_file()
+        print(f"Training again? {trainAgain} ({filePath})")
 
-            start = time.time()
-            # is the training working properly?
-            if conf["Train"] or trainAgain:
-                detr_dataset = ODDETRDataset(
-                    os.path.join(conf["TV_dir"], conf["Train_dir"]),
-                    True, conf["slice"], get_transform()
-                )
+        start = time.time()
+        # is the training working properly?
+        if conf["Train"] or trainAgain:
+            detr_dataset = ODDETRDataset(
+                os.path.join(conf["TV_dir"], conf["Train_dir"]),
+                True, conf["slice"], get_transform()
+            )
+            if tParams["modelType"] == "DETR":
                 model = train_DETR(
                     conf=conf,
                     datasrc=detr_dataset,
@@ -361,17 +363,34 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
                     },
                     file_path=filePath
                 )
-            else:
-                model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50")
-                state = torch.load(filePath, map_location=device)
-                model.load_state_dict(state)
-                model.to(device)
-            end = time.time()
-            trainTime = end - start
+            elif tParams["modelType"] == "DEFDETR": 
+                model = train_DeformableDETR(
+                    conf=conf,
+                    datasrc=detr_dataset,
+                    prefix="DETR_exp_",
+                    params={
+                        "file_path": filePath,
+                        "trainAgain": trainAgain,
+                        "num_epochs": conf["ep"],
+                        "batch_size": tParams["batch_size"],
+                        "lr": tParams["lr"],
+                        "device": device
+                    },
+                    file_path=filePath
+                )
+            else: raise Exception("Experiments: WRONG DETR MODEL")                                                      
+        else:
+            model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50")
+            state = torch.load(filePath, map_location=device)
+            model.load_state_dict(state)
+            model.to(device)
+        end = time.time()
+        trainTime = end - start
 
-            # === test this specific model ===
-            print(f"[DETR] Testing model {filePath}")
-            start = time.time()
+        # === test this specific model ===
+        print(f"[DETR] Testing model {filePath}")
+        start = time.time()
+        if tParams["modelType"] == "DETR":
             prec, rec, oprec, orec = predict_DETR(
                 dataset_test=ODDETRDataset(
                     os.path.join(conf["TV_dir"], conf["Test_dir"]),
@@ -386,19 +405,53 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
                 predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
                 origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
             )
-            end = time.time()
-            testTime = end - start
+        elif tParams["modelType"] == "DEFDETR": 
+            #prec, rec, oprec, orec = predict_DETR(
+            #    dataset_test=ODDETRDataset(
+            #        os.path.join(conf["TV_dir"], conf["Test_dir"]),
+            #        True, conf["slice"], get_transform()
+            #    ),
+            #    model=model,
+            #    processor = DeformableDetrImageProcessor.from_pretrained("SenseTime/deformable-detr"),
+            #    device=device,
+            #    predConfidence=tParams["predconf"],
+            #    max_detections=tParams["max_detections"],
+            #    resize=tParams["resize"],
+            #    predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
+            #    origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
+            #)
 
-            # write results
-            for k, v in tParams.items():
-                f.write(str(v) + ",")
-            f.write(f"{prec},{rec},{oprec},{orec},{trainTime},{testTime}\n")
-            f.flush()
+            prec, rec, oprec, orec = predict_DeformableDETR_FIXED(
+                dataset_test=ODDETRDataset(
+                    os.path.join(conf["TV_dir"], conf["Test_dir"]),
+                    True, conf["slice"], get_transform()
+                ),
+                model=model,
+                processor = DeformableDetrImageProcessor.from_pretrained("SenseTime/deformable-detr"),
+                device=device,
+                predConfidence=tParams["predconf"],
+                max_detections=tParams["max_detections"],
+                predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
+                origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
+            )
+            
 
-        except Exception as e:
-            print("[DETR] Error:", e)
-            f.write("problem with training " + str(e) + "\n")
-            f.flush()
+
+        else: raise Exception("Experiments: WRONG DETR MODEL IN TESTING")                                                      
+        
+        end = time.time()
+        testTime = end - start
+
+        # write results
+        for k, v in tParams.items():
+            f.write(str(v) + ",")
+        f.write(f"{prec},{rec},{oprec},{orec},{trainTime},{testTime}\n")
+        f.flush()
+
+        #except Exception as e:
+        #    print("[DETR] Error:", e)
+        #    f.write("problem with training " + str(e) + "\n")
+        #    f.flush()
 
 
 
@@ -410,6 +463,8 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
 
 
 if __name__ == "__main__":
+    print("IS CUDA AVAILABLE???????????????????????/")
+    print(torch.cuda.is_available())
 
     # Configuration file name, can be entered in the command line
     configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
@@ -426,4 +481,4 @@ if __name__ == "__main__":
 
     DLExperiment(conf, doYolo = False , doPytorchModels = False, doDETR = True)
     DLExperiment(conf, doYolo = False , doPytorchModels = True, doDETR = False)
-    #DLExperiment(conf, doYolo = True , doPytorchModels = False, doDETR = False)
+    DLExperiment(conf, doYolo = True , doPytorchModels = False, doDETR = False)

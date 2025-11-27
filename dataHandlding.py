@@ -123,12 +123,17 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc, d
         Path(d).mkdir(parents=True, exist_ok=True)
         print("making "+str(d))
 
+    print("TRVT going to walk "+str(maskFolder))
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:
+            print(f)
             # read mask and image, everyone is binary
             #print("reading "+str(os.path.join(maskFolder,f)))
             mask = read_Binary_Mask(os.path.join(maskFolder,f))
-            imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
+            # first experiment    
+            #imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
+            #single experiment
+            imageName = f[2:-6]+".png"
             im = read_Binary_Mask(os.path.join(imageFolder,imageName))
 
             # Masks are not the perfect size, reshape

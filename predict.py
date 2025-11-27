@@ -543,8 +543,103 @@ def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5
             prec, rec)
 
 
-
-
+def predict_DeformableDETR_FIXED(dataset_test, model, processor, device=None, 
+                                  predConfidence=0.5, predFolder=None, origFolder=None, 
+                                  max_detections=100, nms_threshold=0.5):
+    """
+    Fixed prediction for Deformable DETR
+    """
+    
+    print("Starting Deformable DETR prediction")
+    
+    if device is None:
+        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    
+    # Add diagnostic for first batch
+    for ind in range(min(1, len(dataset_test))):
+        # Get data
+        image_data, target = dataset_test[ind]
+        imageName = dataset_test.imageNameList[ind].split(os.sep)[-1]
+        
+        # Convert to proper format
+        if isinstance(image_data, torch.Tensor):
+            if image_data.shape[0] == 3:  # (C, H, W)
+                imToStore = image_data.permute(1, 2, 0).cpu().numpy()
+            else:
+                imToStore = image_data.cpu().numpy()
+        else:
+            imToStore = np.array(image_data)
+        
+        # Ensure uint8
+        if imToStore.dtype != np.uint8:
+            if imToStore.max() <= 1.0:
+                imToStore = (imToStore * 255).astype(np.uint8)
+            else:
+                imToStore = imToStore.astype(np.uint8)
+        
+        orig_height, orig_width = imToStore.shape[:2]
+        
+        # CRITICAL FIX: Convert to PIL Image for the processor
+        pil_image = Image.fromarray(imToStore)
+        
+        # Process - pass PIL Image, not numpy array
+        encoding = processor(images=pil_image, return_tensors="pt", do_rescale=True).to(device)
+        pixel_values = encoding["pixel_values"]
+        
+        # Forward pass
+        outputs = model(pixel_values=pixel_values)
+        
+        print("\n" + "="*70)
+        print("DEFORMABLE DETR OUTPUT DIAGNOSTIC")
+        print("="*70)
+        print(f"Image: {imageName}")
+        print(f"Original size: {orig_width}×{orig_height}")
+        print(f"Processed size: {pixel_values.shape}")
+        print(f"Output keys: {outputs.keys()}")
+        print(f"Logits shape: {outputs.logits.shape}")
+        print(f"Pred boxes shape: {outputs.pred_boxes.shape}")
+        
+        # Check logits values
+        logits = outputs.logits[0]
+        print(f"Logits min/max: [{logits.min().item():.4f}, {logits.max().item():.4f}]")
+        
+        # Check probabilities
+        probs = logits.softmax(-1)
+        print(f"Probs shape: {probs.shape}")
+        print(f"Num classes in output: {probs.shape[-1]}")
+        
+        # For single-class detection with num_labels=1:
+        # probs should be shape [num_queries, 2] where:
+        # - probs[:, 0] = probability of object (class 0)
+        # - probs[:, 1] = probability of no-object
+        
+        if probs.shape[-1] == 2:
+            # Correct: single class + no-object
+            scores_class0 = probs[:, 0]
+            print(f"✓ Single-class mode detected (correct: 2 output dims)")
+        elif probs.shape[-1] == 1:
+            # Wrong: only one output - this is the bug!
+            print(f"✗ ERROR: Only 1 output dimension! Model needs retraining with fixed config")
+            print(f"   Current model outputs {probs.shape[-1]} class, should be 2 (object + no-object)")
+            print(f"   All scores will be 1.0 due to softmax on single value")
+            print(f"   SOLUTION: Delete the .pth file and retrain with the fixed training code")
+            scores_class0 = probs[:, 0]
+        else:
+            # Multi-class (shouldn't happen with num_labels=1)
+            print(f"WARNING: Expected 2 classes (object/no-object) but got {probs.shape[-1]}")
+            scores_class0 = probs[:, 0]
+        
+        print(f"Class 0 scores: min={scores_class0.min().item():.4f}, max={scores_class0.max().item():.4f}")
+        print(f"Predictions with score>0.5: {(scores_class0 > 0.5).sum().item()}")
+        print(f"Predictions with score>0.9: {(scores_class0 > 0.9).sum().item()}")
+        print(f"Predictions with score>0.99: {(scores_class0 > 0.99).sum().item()}")
+        
+        # Check predicted boxes
+        boxes = outputs.pred_boxes[0]
+        print(f"Boxes (first 5): {boxes[:5].tolist()}")
+        print("="*70 + "\n")
+        
+        break
 
 @torch.no_grad()
 def predict_pytorch_maskRCNN(dataset_test, model, device, predConfidence):
