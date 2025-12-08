@@ -11,15 +11,13 @@ from itertools import product
 from datasets import ODDataset,ODDETRDataset
 
 from config import read_config
-from predict import detectBlobsMSER,detectBlobsDOG
-from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
+#from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
 from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel,train_DETR, train_DeformableDETR
 
-from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2, buildTestingFromSingleFolderSakuma2NOGT
+from dataHandlding import buildTRVT, buildTestingFromSingleFolderSakuma2, paramsDictToString
 from predict import predict_yolo, predict_pytorch, predict_DETR, predict_DeformableDETR_FIXED
 
 from transformers import DetrForObjectDetection, DetrImageProcessor, DeformableDetrImageProcessor
-
 
 
 class ModelExperiment:
@@ -43,8 +41,9 @@ class ModelExperiment:
             os.path.join(self.conf["TV_dir"], self.conf["Valid_dir"]),
             os.path.join(self.conf["TV_dir"], self.conf["Test_dir"]),  
             self.conf["Train_Perc"], 
-            doTest=False
+            doTest=False, denoised = True
         )
+      
         
         buildTestingFromSingleFolderSakuma2(
             self.conf["Test_input_dir"],
@@ -211,18 +210,25 @@ class DETRExperiment(ModelExperiment):
         start = time.time()
         test_dir = os.path.join(self.conf["TV_dir"], self.conf["Test_dir"])
         test_dataset = ODDETRDataset(test_dir, True, self.conf["slice"], get_transform())
-        
         pred_folder = os.path.join(self.conf["Pred_dir"], "DETR_exp" + paramsDictToString(params))
         orig_folder = os.path.join(self.conf["TV_dir"], self.conf["Test_dir"], "images")
         
         if params["modelType"] == "DETR":
+ 
             processor = DetrImageProcessor.from_pretrained("facebook/detr-resnet-50")
+
             prec, rec, oprec, orec = predict_DETR(
-                test_dataset, model, processor, self.device,
-                params["predconf"], params["max_detections"], params["resize"],
-                pred_folder, orig_folder
-            )
+                dataset_test=ODDETRDataset(test_dir, True, self.conf["slice"], get_transform()),
+                model=model,
+                processor=DetrImageProcessor.from_pretrained("facebook/detr-resnet-50"),
+                device=self.device,
+                predConfidence=params["predconf"],
+                predFolder=pred_folder,
+                origFolder=orig_folder,
+                max_detections=params["max_detections"]
+                )        
         elif params["modelType"] == "DEFDETR":
+            #not working!!!!
             processor = DeformableDetrImageProcessor.from_pretrained("SenseTime/deformable-detr")
             prec, rec, oprec, orec = predict_DeformableDETR_FIXED(
                 test_dataset, model, processor, self.device,
@@ -236,7 +242,7 @@ class DETRExperiment(ModelExperiment):
         return metrics, train_time, test_time
 
 
-def DLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params=None):
+def MODULARDLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params=None):
     """
     Run object detection experiments with single parameter sets
     
@@ -252,9 +258,6 @@ def DLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params=None):
     print("Preparing datasets...")
     base_experiment = ModelExperiment(conf, device)
     base_experiment.prepare_data()
-    
-
-    sys.exit()
 
     # Run YOLO experiment
     if yolo_params:
@@ -264,7 +267,7 @@ def DLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params=None):
         try:
             metrics, train_time, test_time = experiment.train_and_test(yolo_params)
             experiment.write_results(yolo_params, metrics, train_time, test_time)
-            print(f"YOLO Results: Precision={metrics['prec']:.3f}, Recall={metrics['rec']:.3f}")
+            print(f"YOLO Results: Precision={metrics['oprec']:.3f}, Recall={metrics['orec']:.3f}")
         except Exception as e:
             print(f"YOLO experiment failed: {e}")
     
@@ -276,7 +279,7 @@ def DLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params=None):
         try:
             metrics, train_time, test_time = experiment.train_and_test(pytorch_params)
             experiment.write_results(pytorch_params, metrics, train_time, test_time)
-            print(f"PyTorch Results: Precision={metrics['prec']:.3f}, Recall={metrics['rec']:.3f}")
+            print(f"PyTorch Results: Precision={metrics['oprec']:.3f}, Recall={metrics['orec']:.3f}")
         except Exception as e:
             print(f"PyTorch experiment failed: {e}")
     
@@ -288,34 +291,10 @@ def DLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params=None):
         try:
             metrics, train_time, test_time = experiment.train_and_test(detr_params)
             experiment.write_results(detr_params, metrics, train_time, test_time)
-            print(f"DETR Results: Precision={metrics['prec']:.3f}, Recall={metrics['rec']:.3f}")
+            print(f"DETR Results: Precision={metrics['oprec']:.3f}, Recall={metrics['orec']:.3f}")
         except Exception as e:
             print(f"DETR experiment failed: {e}")
     
     print("\n=== All Experiments Complete ===")
 
 
-# Example usage:
-if __name__ == "__main__":
-    print("IS CUDA AVAILABLE???????????????????????")
-    print(torch.cuda.is_available())
-
-    doYolo = True
-    doPytorch = False
-    doDETR = False
-
-    # Configuration file name, can be entered in the command line
-    configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
-
-    # DL experiment
-    conf = read_config(configFile)
-    print(conf)
-    
-    # Define single parameter sets
-    yolo_params = {"scale": 0.3, "mosaic": 0.5} if doYolo else None
-    pytorch_params = {"modelType": "fasterrcnn", "score": 0.25, "nms": 0.5, "predconf": 0.7} if doPytorch else None
-    detr_params = {"modelType": "DETR", "lr": 5e-6, "batch_size": 8, "predconf": 0.5, 
-                   "nms_iou": 0.5, "max_detections": 50, "resize": 800} if doDETR else None
-    
-    # Run experiments
-    DLExperiment(conf, yolo_params, pytorch_params, detr_params)

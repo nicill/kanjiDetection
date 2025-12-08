@@ -25,7 +25,6 @@ import time
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 
-
 os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = pow(2,40).__str__()
 
 # opencv MSER detector
@@ -179,10 +178,8 @@ def predict_new_Set_yolo(conf):
 def predict_yolo(conf, prefix = 'combined_data_'):
 
     testPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"images")
-    #maskPath =os.path.join(conf["TV_dir"],conf["Test_dir"],"masks")
     boxPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"labels")
     testImageList = testFileList(testPath)
-    #modellist = conf["models"]
     predict_dir = conf["Pred_dir"]
 
     #print(testPath)
@@ -190,15 +187,29 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     Path(predict_dir).mkdir(parents=True, exist_ok=True)
     dScore = []
     invScore = []
-    #ignoreCount = 0
     totalTP, totalFP, totalFN = 0, 0, 0
+    
+    # Use the prefix parameter directly
+    currentmodel = prefix
+    
+    # Use the same key that train_YOLO uses
+    train_res_key = "Train_res" if "Train_res" in conf else "trainResFolder"
+    modelpath = os.path.join(conf[train_res_key], "detect", currentmodel, "weights", "best.pt")
+    print(f"predict_yolo: Loading model from {modelpath}")
+    
+    # Verify model exists
+    if not Path(modelpath).exists():
+        raise FileNotFoundError(f"Model not found at: {modelpath}")
+    
+    detectionModel = AutoDetectionModel.from_pretrained(
+        model_type='yolov8', 
+        model_path=modelpath, 
+        device=0
+    )
+
     for imPath in testImageList:
-        currentmodel = prefix if len(conf["models"])<1 else conf["models"][0] # should get totally rid of conf["models"]
 
-        modelpath = conf["Train_res"]+"/detect/"+currentmodel+"/weights/best.pt"
-        #print("predictYOLO, model path "+str(modelpath))
 
-        detectionModel = AutoDetectionModel.from_pretrained(model_type='yolov8', model_path=modelpath,device=0)
         image = cv2.imread(imPath)
         #gtBoxes = fileToBoxCoords(os.path.join(boxPath,os.path.basename(imPath)[:-4]+".txt"),returnCat = False)
         gtBoxes = fileToBoxCoords(os.path.join(boxPath,os.path.basename(imPath)[:-4]+".txt"), returnCat = False, yoloToXYXY=True, imgSize=(image.shape[1], image.shape[0]))
@@ -273,16 +284,12 @@ def predict_yolo(conf, prefix = 'combined_data_'):
 
 @torch.no_grad()
 def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5, 
-                 predFolder=None, origFolder=None, max_detections=100, resize=True):
+                 predFolder=None, origFolder=None, max_detections=100):
     """
-    DETR inference with proper coordinate transformation.
-    
-    Key insight: DetrImageProcessor resizes maintaining aspect ratio.
-    - If target size is 800, shortest edge becomes 800
-    - Normalized coordinates are relative to the RESIZED image
-    - We must scale back to original dimensions
+    DETR inference
+  
+
     """
-    from tqdm import tqdm
 
     print("starting predict_DETR (pytorch-style pipeline)")
 

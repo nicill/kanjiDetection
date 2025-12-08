@@ -40,6 +40,8 @@ from transformers import DetrForObjectDetection, DetrImageProcessor, DeformableD
 import time
 from torch.optim.lr_scheduler import LinearLR, MultiStepLR, SequentialLR
 
+import multiprocessing
+
 
 torch.backends.cudnn.benchmark = True
 
@@ -137,7 +139,7 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     name = prefix+"epochs"+str(epochs)+'ex'
     valfolder = conf["Valid_res"]
     imgsize = conf["slice"]
-    resultstxt = os.path.join(resfolder,valfolder,'results_' + name + '.txt')
+    #resultstxt = os.path.join(resfolder,valfolder,'results_' + name + '.txt')
 
     settings.update({'runs_dir':resfolder})
     model = YOLO('yolov8n.pt')
@@ -146,14 +148,9 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     scVal = 0.5 if "scale" not in params else params["scale"]
     mosVal = 1.0 if "mosaic" not in params else params["mosaic"]
 
-    overrides = {'data': datasrc, 'epochs': epochs, 'imgsz': imgsize, 'name': name, 'device': 0,
-    'patience': 10,'exist_ok': True, 'scale': scVal, 'mosaic': mosVal}
+    overrides = {'data': datasrc, 'epochs': epochs, 'imgsz': imgsize, 'name': name, 
+                  'device': 0,'patience': 10,'exist_ok': True, 'scale': scVal, 'mosaic': mosVal}
 
-    #print("yolo printing parameters BEFORE!!!!!")
-    #print(overrides)
-
-    #results = model.train(**overrides)
-    # trying to get yolo to understand the parameter changes
     model.overrides.update(overrides)
     results = model.train()
 
@@ -165,8 +162,12 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     #            name=name,device=0, patience = 10, exist_ok = True,
     #            scale = scVal, mosaic = mosVal)
     results = model.val(project=resfolder,name=valfolder,save_json=True)
-    # fuck it, not writing the results to disk
 
+    # Return the path where the model was saved
+    model_path = os.path.join(resfolder, "detect", name, "weights", "best.pt")
+    print(f"Model saved to: {model_path}")
+    
+    return model_path
 
 def diagnose_training_data(data_loader, processor, num_samples=3):
     """
@@ -554,12 +555,44 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
                         trainAgain = False, proportion = 0.9, mType = "maskrcnn",
                         trainParams = {"score":0.5,"nms":0.3} ):
 
+    #data_loader = torch.utils.data.DataLoader(
+    #    dataset,
+    #    batch_size = 1,
+    #    shuffle=False,
+    #    collate_fn=collate_fn
+    #)
+    num_workers = min(8, max(1, multiprocessing.cpu_count() - 4))  # tune if needed
     data_loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size = 1,
-        shuffle=False,
-        collate_fn=collate_fn
+    dataset,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=collate_fn,
+    num_workers=num_workers,
+    pin_memory=True,
+    persistent_workers=True
     )
+
+    it = iter(data_loader)
+    imgs, targets = next(it)   # first batch (will trigger loading once)
+
+    # time data loading
+    t0 = time.time()
+    imgs, targets = next(it)
+    print("Data load time (s):", time.time() - t0)
+
+    # move to device and time forward pass
+    imgs = [i.to(device) for i in imgs]
+    targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+    torch.cuda.synchronize()
+    t0 = time.time()
+    model = get_model_instance_segmentation(num_classes, mType=mType).to(device)
+    model.eval()
+    with torch.no_grad():
+        out = model(imgs)
+    torch.cuda.synchronize()
+    print("Forward (model) time (s):", time.time() - t0)
+
+
 
     # probably have a look at this  https://discuss.pytorch.org/t/how-to-use-collate-fn/27181/2
     print("Training Dataset Length "+str(len(dataset)))

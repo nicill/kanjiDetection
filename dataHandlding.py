@@ -12,6 +12,28 @@ from pathlib import Path
 from patch_classification import loadModelReadClassDict,testAndOutputForAnnotations
 import numpy as np
 
+def makeParamDicts(pars,vals):
+    """
+        Receives a list with parameter names
+        and a list of list with values
+        for each parameter
+
+        Creates a list of dictionaries
+        with the combinations of parameters
+    """
+    prod = list(product(*vals))
+    res = [dict(zip(pars,tup)) for tup in prod]
+    return res
+
+def paramsDictToString(aDict, forFileName = False, sep = ""):
+    """
+    Function to create a string from a params dict
+    """
+    ret = ""
+    for k,v in aDict.items():
+        if not forFileName or k != "predconf":ret+=str(k)+sep+str(v)+sep
+    return ret[:-1] if sep != "" else ret
+
 def predictionsToKanjiImages(im,mask,path,imCode,storeContext=False):
     """
     Function that receives a prediction
@@ -104,7 +126,7 @@ def predictAllFolders(dataFolder, model,weights, classDict ):
             testAndOutputForAnnotations(os.path.join(dataFolder,d),outFileName,model,weights, classDict)
 
 
-def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc, doTest = True):
+def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc, doTest = True, denoised = True):
     """
         Receives a folder with images
         And another of masks
@@ -123,18 +145,15 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc, d
         Path(d).mkdir(parents=True, exist_ok=True)
         print("making "+str(d))
 
-    print("TRVT going to walk "+str(maskFolder))
     for dirpath, dnames, fnames in os.walk(maskFolder):
         for f in fnames:
-            print(f)
             # read mask and image, everyone is binary
             #print("reading "+str(os.path.join(maskFolder,f)))
             mask = read_Binary_Mask(os.path.join(maskFolder,f))
-            # first experiment    
-            #imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
-            #single experiment
-            imageName = f[2:-6]+".png"
-            im = read_Binary_Mask(os.path.join(imageFolder,imageName))
+            # first experiment or singleExperiment    
+            #imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif" if denoised else f[2:-6]+".png"
+            imageName = f[2:-6]+"denoised.png" if denoised else f[2:-6]+".png"
+            im = read_Binary_Mask(os.path.join(imageFolder,imageName)) if denoised else color_to_gray(read_Color_Image(os.path.join(imageFolder,imageName)) )
 
             # Masks are not the perfect size, reshape
             mask = cv2.resize(mask, (im.shape[1],im.shape[0]))

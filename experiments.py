@@ -21,32 +21,16 @@ from predict import detectBlobsMSER,detectBlobsDOG
 from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
 from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel,train_DETR, train_DeformableDETR
 
-from dataHandlding import buildTRVT,buildNewDataTesting,separateTrainTest, forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2, buildTestingFromSingleFolderSakuma2NOGT
+from dataHandlding import (buildTRVT,buildNewDataTesting,separateTrainTest, 
+                           forPytorchFromYOLO, buildTestingFromSingleFolderSakuma2, 
+                           buildTestingFromSingleFolderSakuma2NOGT,
+                           makeParamDicts, paramsDictToString)
 from predict import predict_yolo, predict_pytorch, predict_DETR, predict_DeformableDETR_FIXED
 
 from transformers import DetrForObjectDetection, DetrImageProcessor, DeformableDetrImageProcessor
+from experimentsUtils import MODULARDLExperiment
 
-def makeParamDicts(pars,vals):
-    """
-        Receives a list with parameter names
-        and a list of list with values
-        for each parameter
 
-        Creates a list of dictionaries
-        with the combinations of parameters
-    """
-    prod = list(product(*vals))
-    res = [dict(zip(pars,tup)) for tup in prod]
-    return res
-
-def paramsDictToString(aDict, forFileName = False, sep = ""):
-    """
-    Function to create a string from a params dict
-    """
-    ret = ""
-    for k,v in aDict.items():
-        if not forFileName or k != "predconf":ret+=str(k)+sep+str(v)+sep
-    return ret[:-1] if sep != "" else ret
 
 def computeAndCombineMasks(file):
     """
@@ -191,7 +175,7 @@ def classicalDescriptorExperiment(fName):
     fDirMSER.close()
     fInvMSER.close()
 
-
+# original DL experiment should be changed to modular type
 def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
     """
         Experiment to compare different typs
@@ -336,149 +320,172 @@ def DLExperiment(conf, doYolo = False, doPytorchModels = False, doDETR = False):
         )
         print(f"[DETR] Testing params {tParams} with filePath {filePath}")
 
-        #try:
-        # train if needed
-        trainAgain = not Path(filePath).is_file()
-        print(f"Training again? {trainAgain} ({filePath})")
+        try:
+            # train if needed
+            trainAgain = not Path(filePath).is_file()
+            print(f"Training again? {trainAgain} ({filePath})")
 
-        start = time.time()
-        # is the training working properly?
-        if conf["Train"] or trainAgain:
-            detr_dataset = ODDETRDataset(
-                os.path.join(conf["TV_dir"], conf["Train_dir"]),
-                True, conf["slice"], get_transform()
-            )
+            start = time.time()
+            # is the training working properly?
+            if conf["Train"] or trainAgain:
+                detr_dataset = ODDETRDataset(
+                    os.path.join(conf["TV_dir"], conf["Train_dir"]),
+                    True, conf["slice"], get_transform()
+                )
+                if tParams["modelType"] == "DETR":
+                    model = train_DETR(
+                        conf=conf,
+                        datasrc=detr_dataset,
+                        prefix="DETR_exp_",
+                        params={
+                            "file_path": filePath,
+                            "trainAgain": trainAgain,
+                            "num_epochs": conf["ep"],
+                            "batch_size": tParams["batch_size"],
+                            "lr": tParams["lr"],
+                            "device": device
+                        },
+                        file_path=filePath
+                    )
+                elif tParams["modelType"] == "DEFDETR": 
+                    model = train_DeformableDETR(
+                        conf=conf,
+                        datasrc=detr_dataset,
+                        prefix="DETR_exp_",
+                        params={
+                            "file_path": filePath,
+                            "trainAgain": trainAgain,
+                            "num_epochs": conf["ep"],
+                            "batch_size": tParams["batch_size"],
+                            "lr": tParams["lr"],
+                            "device": device
+                        },
+                        file_path=filePath
+                    )
+                else: raise Exception("Experiments: WRONG DETR MODEL")                                                      
+            else:
+                model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50")
+                state = torch.load(filePath, map_location=device)
+                model.load_state_dict(state)
+                model.to(device)
+            end = time.time()
+            trainTime = end - start
+
+            # === test this specific model ===
+            print(f"[DETR] Testing model {filePath}")
+            start = time.time()
             if tParams["modelType"] == "DETR":
-                model = train_DETR(
-                    conf=conf,
-                    datasrc=detr_dataset,
-                    prefix="DETR_exp_",
-                    params={
-                        "file_path": filePath,
-                        "trainAgain": trainAgain,
-                        "num_epochs": conf["ep"],
-                        "batch_size": tParams["batch_size"],
-                        "lr": tParams["lr"],
-                        "device": device
-                    },
-                    file_path=filePath
+                prec, rec, oprec, orec = predict_DETR(
+                    dataset_test=ODDETRDataset(
+                        os.path.join(conf["TV_dir"], conf["Test_dir"]),
+                        True, conf["slice"], get_transform()
+                    ),
+                    model=model,
+                    processor=DetrImageProcessor.from_pretrained("facebook/detr-resnet-50"),
+                    device=device,
+                    predConfidence=tParams["predconf"],
+                    max_detections=tParams["max_detections"],
+                    resize=tParams["resize"],
+                    predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
+                    origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
                 )
             elif tParams["modelType"] == "DEFDETR": 
-                model = train_DeformableDETR(
-                    conf=conf,
-                    datasrc=detr_dataset,
-                    prefix="DETR_exp_",
-                    params={
-                        "file_path": filePath,
-                        "trainAgain": trainAgain,
-                        "num_epochs": conf["ep"],
-                        "batch_size": tParams["batch_size"],
-                        "lr": tParams["lr"],
-                        "device": device
-                    },
-                    file_path=filePath
+                #prec, rec, oprec, orec = predict_DETR(
+                #    dataset_test=ODDETRDataset(
+                #        os.path.join(conf["TV_dir"], conf["Test_dir"]),
+                #        True, conf["slice"], get_transform()
+                #    ),
+                #    model=model,
+                #    processor = DeformableDetrImageProcessor.from_pretrained("SenseTime/deformable-detr"),
+                #    device=device,
+                #    predConfidence=tParams["predconf"],
+                #    max_detections=tParams["max_detections"],
+                #    resize=tParams["resize"],
+                #    predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
+                #    origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
+                #)
+
+                prec, rec, oprec, orec = predict_DeformableDETR_FIXED(
+                    dataset_test=ODDETRDataset(
+                        os.path.join(conf["TV_dir"], conf["Test_dir"]),
+                        True, conf["slice"], get_transform()
+                    ),
+                    model=model,
+                    processor = DeformableDetrImageProcessor.from_pretrained("SenseTime/deformable-detr"),
+                    device=device,
+                    predConfidence=tParams["predconf"],
+                    max_detections=tParams["max_detections"],
+                    predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
+                    origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
                 )
-            else: raise Exception("Experiments: WRONG DETR MODEL")                                                      
-        else:
-            model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50")
-            state = torch.load(filePath, map_location=device)
-            model.load_state_dict(state)
-            model.to(device)
-        end = time.time()
-        trainTime = end - start
+                
 
-        # === test this specific model ===
-        print(f"[DETR] Testing model {filePath}")
-        start = time.time()
-        if tParams["modelType"] == "DETR":
-            prec, rec, oprec, orec = predict_DETR(
-                dataset_test=ODDETRDataset(
-                    os.path.join(conf["TV_dir"], conf["Test_dir"]),
-                    True, conf["slice"], get_transform()
-                ),
-                model=model,
-                processor=DetrImageProcessor.from_pretrained("facebook/detr-resnet-50"),
-                device=device,
-                predConfidence=tParams["predconf"],
-                max_detections=tParams["max_detections"],
-                resize=tParams["resize"],
-                predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
-                origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
-            )
-        elif tParams["modelType"] == "DEFDETR": 
-            #prec, rec, oprec, orec = predict_DETR(
-            #    dataset_test=ODDETRDataset(
-            #        os.path.join(conf["TV_dir"], conf["Test_dir"]),
-            #        True, conf["slice"], get_transform()
-            #    ),
-            #    model=model,
-            #    processor = DeformableDetrImageProcessor.from_pretrained("SenseTime/deformable-detr"),
-            #    device=device,
-            #    predConfidence=tParams["predconf"],
-            #    max_detections=tParams["max_detections"],
-            #    resize=tParams["resize"],
-            #    predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
-            #    origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
-            #)
 
-            prec, rec, oprec, orec = predict_DeformableDETR_FIXED(
-                dataset_test=ODDETRDataset(
-                    os.path.join(conf["TV_dir"], conf["Test_dir"]),
-                    True, conf["slice"], get_transform()
-                ),
-                model=model,
-                processor = DeformableDetrImageProcessor.from_pretrained("SenseTime/deformable-detr"),
-                device=device,
-                predConfidence=tParams["predconf"],
-                max_detections=tParams["max_detections"],
-                predFolder=os.path.join(conf["Pred_dir"], "DETR_exp" + paramsDictToString(tParams)),
-                origFolder=os.path.join(conf["TV_dir"], conf["Test_dir"], "images")
-            )
+            else: raise Exception("Experiments: WRONG DETR MODEL IN TESTING")                                                      
             
+            end = time.time()
+            testTime = end - start
 
+            # write results
+            for k, v in tParams.items():
+                f.write(str(v) + ",")
+            f.write(f"{prec},{rec},{oprec},{orec},{trainTime},{testTime}\n")
+            f.flush()
 
-        else: raise Exception("Experiments: WRONG DETR MODEL IN TESTING")                                                      
-        
-        end = time.time()
-        testTime = end - start
-
-        # write results
-        for k, v in tParams.items():
-            f.write(str(v) + ",")
-        f.write(f"{prec},{rec},{oprec},{orec},{trainTime},{testTime}\n")
-        f.flush()
-
-        #except Exception as e:
-        #    print("[DETR] Error:", e)
-        #    f.write("problem with training " + str(e) + "\n")
-        #    f.flush()
-
-
-
-
-
-
+        except Exception as e:
+            print("[DETR] Error:", e)
+            f.write("problem with training " + str(e) + "\n")
+            f.flush()
 
     f.close()
 
-
+# Single experiment:
 if __name__ == "__main__":
-    print("IS CUDA AVAILABLE???????????????????????/")
+    print("IS CUDA AVAILABLE???????????????????????")
     print(torch.cuda.is_available())
+
+    doYolo = True
+    doPytorch = False
+    doDETR = True
 
     # Configuration file name, can be entered in the command line
     configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
 
-    #computeAndCombineMasks(configFile)
-    #classicalDescriptorExperiment(configFile)
-    #BEST
-    #DOG 77.5665178571429	 {'over': 0.5;min_s': 20;max_s': 100}
-    # MSER 72.6126785714286	 {'delta': 5;minA': 500;maxA': 25000}
-
     # DL experiment
     conf = read_config(configFile)
     print(conf)
+    
+    # Define single parameter sets
+    yolo_params = {"scale": 0.45, "mosaic": 0} if doYolo else None
+    pytorch_params = {"modelType": "maskrcnn", "score": 0.05, "nms": 0.25, "predconf": 0.7} if doPytorch else None
+    detr_params = {"modelType": "DETR", "lr": 5e-6, "batch_size": 8, "predconf": 0.5, 
+                   "nms_iou": 0.5, "max_detections": 50} if doDETR else None
+    
+    # Run experiments
+    MODULARDLExperiment(conf, yolo_params, pytorch_params, detr_params)
 
-    DLExperiment(conf, doYolo = False , doPytorchModels = False, doDETR = True)
-    DLExperiment(conf, doYolo = False , doPytorchModels = True, doDETR = False)
-    DLExperiment(conf, doYolo = True , doPytorchModels = False, doDETR = False)
+
+#initial experiment
+#if __name__ == "__main__":
+#    print("IS CUDA AVAILABLE???????????????????????/")
+#    print(torch.cuda.is_available())
+
+    # Configuration file name, can be entered in the command line
+#    configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
+
+    #computeAndCombineMasks(configFile)
+
+    # DL experiment
+#    conf = read_config(configFile)
+#    print(conf)
+
+#    DLExperiment(conf, doYolo = False , doPytorchModels = False, doDETR = True)
+#    DLExperiment(conf, doYolo = False , doPytorchModels = True, doDETR = False)
+#    DLExperiment(conf, doYolo = True , doPytorchModels = False, doDETR = False)
+
+
+
+#classicalDescriptorExperiment(configFile)
+#BEST
+#DOG 77.5665178571429	 {'over': 0.5;min_s': 20;max_s': 100}
+# MSER 72.6126785714286	 {'delta': 5;minA': 500;maxA': 25000}
