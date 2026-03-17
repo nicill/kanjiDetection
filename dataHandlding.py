@@ -2,7 +2,8 @@
 File to build training and Validation datasets
 For Kanji Detection using deep learning
 """
-from imageUtils import sliding_window,read_Color_Image,read_Binary_Mask,strictBinarization,sliceAndBox,boxCoordsToFile,boxesFromMask,color_to_gray
+from imageUtils import read_Color_Image,read_Binary_Mask, read_grayscale, strictBinarization,sliceAndBox,boxCoordsToFile,boxesFromMask,color_to_gray, cleanUpMask, cleanUpMaskBlackPixels
+
 import os
 import cv2
 import sys
@@ -11,6 +12,8 @@ import shutil
 from pathlib import Path
 from patch_classification import loadModelReadClassDict,testAndOutputForAnnotations
 import numpy as np
+from itertools import product
+
 
 def makeParamDicts(pars,vals):
     """
@@ -93,8 +96,16 @@ def foldersToAnnotationDB(maskFolder, imageFolder, outFolder, storeContext=False
         for f in fnames:
             # read mask and image, everyone is binary
             mask = read_Binary_Mask(os.path.join(maskFolder,f))
-            imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
-            im = read_Binary_Mask(os.path.join(imageFolder,imageName))
+            
+            # classic sakuma
+            #imageName = f[2:-6]+".tif_resultat_noiseRemoval.tif"
+            #im = read_Binary_Mask(os.path.join(imageFolder,imageName))
+
+            # sakuma 2024
+            imageName = f[2:-6]+".png"
+            im = read_grayscale(os.path.join(imageFolder,imageName))
+
+
 
             # Masks are not the perfect size, reshape
             mask = cv2.resize(mask, (im.shape[1],im.shape[0]))
@@ -133,7 +144,7 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc, d
         builds training, validation and test set using all the
         files with masks
         CAREFUL! name correspondences between
-        mask and image files
+        mask and image files (depens on "denoised" parameter)
     """
     # create output directories if they do not exist
     dirList = [os.path.join(outTrain,"images"),os.path.join(outTrain,"masks"),
@@ -161,6 +172,10 @@ def buildTRVT(imageFolder, maskFolder, slice, outTrain, outVal, outTest, perc, d
             # binarize mask
             mask[mask<10] = 0
             mask[mask>10] = 255
+
+            # clean up masks too
+            cleanUpMask(mask, areaTH = 200)
+            mask = cleanUpMaskBlackPixels(mask, im, areaTH = 150 )
 
             # call slice and box
             sIML = sliceAndBox(im,mask,slice)
@@ -196,7 +211,7 @@ def buildNewDataTesting(imageFolder, maskFolder, outTest):
                     im = cv2.imread(os.path.join(imageFolder,f))
                     cv2.imwrite(os.path.join(outTest,"images",f),im)
 
-def buildTestingFromSingleFolderSakuma2(inFolder, outTest,  slice, denoised = True):
+def buildTestingFromSingleFolderSakuma2(inFolder, outTest,  slice, denoised = True, resize = False):
     """
         Receive one folder in sakuma2 format, traverse all masks
         create a testing set with image and mask subfolders
@@ -224,14 +239,17 @@ def buildTestingFromSingleFolderSakuma2(inFolder, outTest,  slice, denoised = Tr
                 mask = cv2.resize(mask, (im.shape[1],im.shape[0]))
 
                 # reshape so that the size fits that of Sakuma1
-                factor = 0.45
-                mask = cv2.resize(mask, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
-                im = cv2.resize(im, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
-
+                if resize:
+                    factor = 0.45
+                    mask = cv2.resize(mask, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
+                    im = cv2.resize(im, (int(im.shape[1]*factor),int(im.shape[0]*factor)))
 
                 # binarize mask
                 mask[mask<10] = 0
                 mask[mask>10] = 255
+
+                cleanUpMask(mask, areaTH = 200)
+                mask = cleanUpMaskBlackPixels(mask, im, areaTH = 150 )
 
                 # call slice and box
                 sIML = sliceAndBox(im,mask,slice)

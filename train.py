@@ -36,9 +36,9 @@ from torchvision.models import (
     ConvNeXt_Tiny_Weights, ConvNeXt_Small_Weights, ConvNeXt_Base_Weights,
     ConvNeXt_Large_Weights)
 
-from transformers import DetrForObjectDetection, DetrImageProcessor, DeformableDetrImageProcessor, DeformableDetrForObjectDetection,DeformableDetrConfig
+from transformers import DetrForObjectDetection, DetrImageProcessor
 import time
-from torch.optim.lr_scheduler import LinearLR, MultiStepLR, SequentialLR
+#from torch.optim.lr_scheduler import LinearLR, MultiStepLR, SequentialLR
 
 import multiprocessing
 
@@ -358,179 +358,6 @@ def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
     
     return model
 
-
-def train_DeformableDETR(conf, datasrc, prefix='deformable_detr_', params=None, file_path=""):
-    """
-    Train Deformable DETR with CORRECT configuration for single-class detection
-    """
-   
-    params = {} if params is None else params
-    epochs = params.get("num_epochs", conf.get("ep", 50))
-    processor_name = "SenseTime/deformable-detr"
-    trainAgain = params.get("trainAgain", True)
-    device = params.get("device", torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
-    batch_size = params.get("batch_size", 2)
-    lr = params.get("lr", 1e-4)
-    weight_decay = params.get("weight_decay", 1e-4)
-    
-    print(f"[Deformable DETR] Training for {epochs} epochs")
-    
-    processor = DeformableDetrImageProcessor.from_pretrained(processor_name)
-    
-    if trainAgain:
-        # Step 1: Create model from scratch with correct config
-        print(f"[Deformable DETR] Creating model from scratch...")
-        config = DeformableDetrConfig.from_pretrained(processor_name)
-        config.num_labels = 1  # This will create 2 output dims (object + no-object)
-        
-        # Create new model with correct architecture
-        model = DeformableDetrForObjectDetection(config)
-
-
-        # Find the classification head (attribute name varies)
-        classifier = None
-        if hasattr(model, 'class_labels_classifier'):
-            classifier = model.class_labels_classifier
-        elif hasattr(model, 'class_embed'):
-            classifier = model.class_embed
-        elif hasattr(model.model, 'class_embed'):
-            classifier = model.model.class_embed
-        
-        if classifier is not None:
-            # Check if it's a ModuleList or single layer
-            if isinstance(classifier, nn.ModuleList):
-                # It's a list of layers (one per decoder layer)
-                out_features = classifier[-1].out_features  # Check the last one
-                print(f"[Deformable DETR] Classification head (ModuleList with {len(classifier)} layers)")
-                print(f"[Deformable DETR] Output dims per layer: {out_features}")
-            else:
-                # Single layer
-                out_features = classifier.out_features
-                print(f"[Deformable DETR] Classification head output dims: {out_features}")
-            
-            assert out_features == 2, \
-                f"ERROR: Expected 2 outputs, got {out_features}"
-            print(f"[Deformable DETR] ✓ Model ready with 2 output dimensions")
-        else:
-            print(f"[Deformable DETR] WARNING: Could not find classification head to verify")
-        
-        # Step 2: Load pretrained backbone
-        print(f"[Deformable DETR] Loading pretrained backbone...")
-        pretrained_model = DeformableDetrForObjectDetection.from_pretrained(processor_name)
-        
-        # Copy backbone weights only
-        pretrained_state = pretrained_model.state_dict()
-        model_state = model.state_dict()
-        
-        # Only copy backbone and encoder (not classification head)
-        copied_keys = []
-        for key in pretrained_state.keys():
-            # Skip classification and bbox prediction layers
-            if any(skip in key for skip in ['class_embed', 'bbox_embed', 'class_labels_classifier', 'bbox_predictor']):
-                continue
-            if key in model_state and pretrained_state[key].shape == model_state[key].shape:
-                model_state[key] = pretrained_state[key]
-                copied_keys.append(key)
-        
-        model.load_state_dict(model_state)
-        print(f"[Deformable DETR] Copied {len(copied_keys)} parameter tensors from pretrained")
-        
-        del pretrained_model
-    else:
-        # Load previously trained model
-        config = DeformableDetrConfig.from_pretrained(processor_name)
-        config.num_labels = 1
-        model = DeformableDetrForObjectDetection(config)
-        
-        if os.path.exists(file_path):
-            state = torch.load(file_path, map_location='cpu')
-            model.load_state_dict(state)
-            print(f"[Deformable DETR] Loaded from {file_path}")
-        else:
-            print(f"[Deformable DETR] File not found: {file_path}")
-    
-    model.to(device)
-    
-    # Create dataloader
-    from datasets import collate_fn
-    data_loader = torch.utils.data.DataLoader(
-        datasrc,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=collate_fn
-    )
-    
-    # Optimizer
-    optimizer = torch.optim.AdamW(
-        [p for p in model.parameters() if p.requires_grad],
-        lr=lr,
-        weight_decay=weight_decay
-    )
-    
-    # Learning rate scheduler
-    from torch.optim.lr_scheduler import MultiStepLR
-    lr_scheduler = MultiStepLR(optimizer, milestones=[int(epochs*0.8)], gamma=0.1)
-    
-    if trainAgain:
-        model.train()
-        best_loss = float('inf')
-        
-        for epoch in range(epochs):
-            total_loss = 0.0
-            num_batches = 0
-            
-            for batch_idx, (images, targets) in enumerate(data_loader):
-                imgs = list(images)
-                annotations = [{"image_id": i, "annotations": t["annotations"]} 
-                              for i, t in enumerate(targets)]
-                
-                encoding = processor(images=imgs, annotations=annotations, 
-                                   return_tensors="pt", do_rescale=True)
-                
-                pixel_values = encoding["pixel_values"].to(device)
-                labels = encoding["labels"]
-                hf_labels = [{k: (v.to(device) if isinstance(v, torch.Tensor) else v) 
-                             for k, v in lab.items()} for lab in labels]
-                
-                outputs = model(pixel_values=pixel_values, labels=hf_labels)
-                loss = outputs.loss
-                
-                # Diagnostic first batch
-                if epoch == 0 and batch_idx == 0:
-                    print(f"\n[DIAGNOSTIC] First batch:")
-                    print(f"  Loss: {loss.item():.6f}")
-                    print(f"  Logits shape: {outputs.logits.shape}")
-                    print(f"  Expected: [batch_size, 300, 2]")
-                    if outputs.logits.shape[-1] != 2:
-                        print(f"  ✗ ERROR: Wrong number of output dimensions: {outputs.logits.shape[-1]}")
-                        print(f"  This model will not work correctly!")
-                        print(f"  The transformers library may have a bug with num_labels=1")
-                    else:
-                        print(f"  ✓ Correct output dimensions")
-                
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-                optimizer.step()
-                
-                total_loss += loss.item()
-                num_batches += 1
-            
-            lr_scheduler.step()
-            avg_loss = total_loss / max(num_batches, 1)
-            
-            if (epoch + 1) % 5 == 0 or epoch < 3:
-                print(f"[Deformable DETR] Epoch {epoch+1}/{epochs} - loss: {avg_loss:.6f}")
-            
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                torch.save(model.state_dict(), file_path)
-        
-        print(f"[Deformable DETR] Training finished, saved to {file_path}")
-    
-    return model
-
-
 def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', min_size=224, max_size=1333):
     backbone = convnext_fpn_backbone(backbone_name=backbone_name)
     model = MaskRCNN(
@@ -551,47 +378,11 @@ def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', min_size=2
     return model
 
 
-def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
-                        trainAgain = False, proportion = 0.9, mType = "maskrcnn",
-                        trainParams = {"score":0.5,"nms":0.3} ):
 
-    #data_loader = torch.utils.data.DataLoader(
-    #    dataset,
-    #    batch_size = 1,
-    #    shuffle=False,
-    #    collate_fn=collate_fn
-    #)
+def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10, trainAgain = False, proportion = 0.9, BS = 1,mType = "maskrcnn", trainParams = {"modelType": "maskrcnn", "score": 0.05, "nms": 0.25, "predconf": 0.7, "LR": 0.005, "STEP": 100, "GAMMA":0.1}):
+
     num_workers = min(8, max(1, multiprocessing.cpu_count() - 4))  # tune if needed
-    data_loader = torch.utils.data.DataLoader(
-    dataset,
-    batch_size=1,
-    shuffle=True,
-    collate_fn=collate_fn,
-    num_workers=num_workers,
-    pin_memory=True,
-    persistent_workers=True
-    )
-
-    it = iter(data_loader)
-    imgs, targets = next(it)   # first batch (will trigger loading once)
-
-    # time data loading
-    t0 = time.time()
-    imgs, targets = next(it)
-    print("Data load time (s):", time.time() - t0)
-
-    # move to device and time forward pass
-    imgs = [i.to(device) for i in imgs]
-    targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-    torch.cuda.synchronize()
-    t0 = time.time()
-    model = get_model_instance_segmentation(num_classes, mType=mType).to(device)
-    model.eval()
-    with torch.no_grad():
-        out = model(imgs)
-    torch.cuda.synchronize()
-    print("Forward (model) time (s):", time.time() - t0)
-
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size = BS, shuffle=True, collate_fn=collate_fn, num_workers=num_workers, pin_memory=True, persistent_workers=True)
 
 
     # probably have a look at this  https://discuss.pytorch.org/t/how-to-use-collate-fn/27181/2
@@ -611,29 +402,45 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
 
         # construct an optimizer
         params = [p for p in model.parameters() if p.requires_grad]
-        optimizer = torch.optim.SGD(
-            params,
-            lr=0.005,
-            momentum=0.9,
-            weight_decay=0.0005
-        )
+        #optimizer = torch.optim.SGD(params, lr = 0.005, momentum=0.9, weight_decay=0.0005)
+        optimizer = torch.optim.SGD(params, lr = trainParams["LR"], momentum=0.9, weight_decay=0.0005)
 
         # and a learning rate scheduler
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=3,
-            gamma=0.1
-        )
+        #lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1 )
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = trainParams["STEP"], gamma = trainParams["GAMMA"] )
 
-        # train
+        # train with patience
+        patience = 2
+        best_loss = 9999
+        best_state_dict = None
+        epochs_without_improvement = 0
+
         for epoch in range(num_epochs):
             # train for one epoch, printing every 10 iterations
-            train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+            metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+            epoch_loss = metric_logger.loss.global_avg
             # update the learning rate
             lr_scheduler.step()
 
-        # Save the model's state_dict (recommended for saving models)
-        torch.save(model.state_dict(), file_path)
+            print("EPOCH LOSS")    
+            print(epoch_loss)
+
+            if epoch_loss < best_loss:
+                print("IMPROVED")
+                best_loss = epoch_loss
+                epochs_without_improvement = 0
+                best_state_dict = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            else:
+                epochs_without_improvement += 1
+                print("NOT IMPROVED FOR "+str(epochs_without_improvement))
+                if epochs_without_improvement >= patience:
+                    print(f"Early stopping at epoch {epoch}, best loss {best_loss:.4f}")
+
+        # Save the model's state_dict 
+        torch.save(best_state_dict, file_path)
+        model.load_state_dict(best_state_dict)
+        model.to(device)
+
     else:# loading pretrained model
         print("not training again")
         if mType == "maskrcnn":
@@ -691,18 +498,12 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
                 norm_layer=partial(torch.nn.GroupNorm, 32)
             )
         elif mType == "fcos":
-
             # Don’t load COCO weights if you’ll be restoring your own checkpoint
             model = torchvision.models.detection.fcos_resnet50_fpn(weights=None)
 
             # Rebuild classification head with the right number of classes
             num_anchors = model.head.classification_head.num_anchors
-            model.head.classification_head = FCOSClassificationHead(
-                in_channels=256,
-                num_anchors=num_anchors,
-                num_classes=num_classes,
-                norm_layer=partial(torch.nn.GroupNorm, 32)
-            )
+            model.head.classification_head = FCOSClassificationHead(in_channels=256, num_anchors=num_anchors, num_classes=num_classes, norm_layer=partial(torch.nn.GroupNorm, 32))
         elif mType == "ssd":
             size = 300
             # Load the Torchvision pretrained model.
@@ -714,11 +515,7 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
             # List containing number of anchors based on aspect ratios.
             num_anchors = model.anchor_generator.num_anchors_per_location()
             # The classification head.
-            model.head.classification_head = SSDClassificationHead(
-                in_channels=in_channels,
-                num_anchors=num_anchors,
-                num_classes=num_classes,
-            )
+            model.head.classification_head = SSDClassificationHead(in_channels=in_channels, num_anchors=num_anchors, num_classes=num_classes )
             # Image size for transforms.
             model.transform.min_size = (size,)
             model.transform.max_size = size
@@ -729,9 +526,18 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
 
         # Load the saved state_dict into the model
         model.load_state_dict(torch.load(file_path))
+
+        # update heads and shit
+        if mType in ["maskrcnn","fasterrcnn","convnextmaskrcnn"]:
+            model.roi_heads.score_thresh = trainParams["score"]
+            model.roi_heads.nms_thresh = trainParams["nms"]
+        elif mType in ["retinanet","fcos","ssd"]:
+            model.score_thresh = trainParams["score"]
+            model.nms_thresh = trainParams["nms"]
+        
         model.eval()  # Set the model to evaluation mode
-    return model
     print("finished training")
+    return model
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
     model.train()

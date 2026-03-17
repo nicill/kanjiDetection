@@ -38,7 +38,6 @@ def deNoiseFolder(folder, sTh = 0.85, ws = 271):
                 g2 = img_gray.copy()
                 newName = f[:-4]+"denoised"+".png"
 
-                ws = 271
                 sauv = sauvolaThreshold(img_gray,hardness = sTh, window_size= ws)
                 cv2.imwrite(os.path.join(folder,newName),sauv)
 
@@ -414,12 +413,17 @@ def reduceNoiseSakuma2(im, eroSize = 5, eroIts = 3, kW =1, rL = 20, areaTH = 500
 
 if __name__ == '__main__':
 
-    deNoiseFolderADV(sys.argv[1])
-
-    sys.exit()
-    ##OLD CODE
+    # denoise all folders enteres in the command line
     deNoiseSubFolders(sys.argv[1])
     files = [x for x in sys.argv[1:]]
+    sys.exit()
+
+    ##OLD CODE
+    # to denoise only images that have annotations in one single folder
+    deNoiseFolderADV(sys.argv[1])
+    sys.exit()
+
+
     #older CODE
     # now do local threshold processing for all images
     for imFile in files:

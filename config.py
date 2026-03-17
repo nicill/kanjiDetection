@@ -40,9 +40,10 @@ def read_config(filename):
     res_dict["ep"] = int(conf[section].get('epochs'))
     res_dict["again"] = conf[section].get('trainagain') == "yes"
 
-    res_dict["pScoreTH"] = float(conf[section].get('pScoreTH'))
-    res_dict["pnmsTH"] = float(conf[section].get('pnmsTH'))
+    #res_dict["pScoreTH"] = float(conf[section].get('pScoreTH'))
+    #res_dict["pnmsTH"] = float(conf[section].get('pnmsTH'))
     res_dict["yoloFormat"] = conf[section].get('yoloFormat') == "yes"
+    res_dict["BS"] = int(conf[section].get('batchS'))
 
 
     section = 'TEST'

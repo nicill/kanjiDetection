@@ -12,12 +12,12 @@ from datasets import ODDataset,ODDETRDataset
 
 from config import read_config
 #from imageUtils import boxesFound,read_Binary_Mask,recoupMasks
-from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel,train_DETR, train_DeformableDETR
+from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel,train_DETR
 
 from dataHandlding import buildTRVT, buildTestingFromSingleFolderSakuma2, paramsDictToString
-from predict import predict_yolo, predict_pytorch, predict_DETR, predict_DeformableDETR_FIXED
+from predict import predict_yolo, predict_pytorch, predict_DETR
 
-from transformers import DetrForObjectDetection, DetrImageProcessor, DeformableDetrImageProcessor
+from transformers import DetrForObjectDetection, DetrImageProcessor
 
 
 class ModelExperiment:
@@ -33,24 +33,10 @@ class ModelExperiment:
         if not self.conf["Prep"]:
             return
             
-        buildTRVT(
-            self.conf["Train_input_dir_images"], 
-            self.conf["Train_input_dir_masks"],
-            self.conf["slice"],
-            os.path.join(self.conf["TV_dir"], self.conf["Train_dir"]), 
-            os.path.join(self.conf["TV_dir"], self.conf["Valid_dir"]),
-            os.path.join(self.conf["TV_dir"], self.conf["Test_dir"]),  
-            self.conf["Train_Perc"], 
-            doTest=False, denoised = True
-        )
-      
+        buildTRVT(self.conf["Train_input_dir_images"], self.conf["Train_input_dir_masks"], self.conf["slice"], os.path.join(self.conf["TV_dir"], self.conf["Train_dir"]), os.path.join(self.conf["TV_dir"], 
+                self.conf["Valid_dir"]), os.path.join(self.conf["TV_dir"], self.conf["Test_dir"]), self.conf["Train_Perc"], doTest=False, denoised = False )
         
-        buildTestingFromSingleFolderSakuma2(
-            self.conf["Test_input_dir"],
-            os.path.join(self.conf["TV_dir"], self.conf["Test_dir"]),
-            self.conf["slice"],
-            denoised=True
-        )
+        buildTestingFromSingleFolderSakuma2(self.conf["Test_input_dir"], os.path.join(self.conf["TV_dir"], self.conf["Test_dir"]), self.conf["slice"], denoised=False)
     
     def write_results(self, params, metrics, train_time, test_time):
         """Write experiment results to file"""
@@ -118,10 +104,8 @@ class PyTorchModelExperiment(ModelExperiment):
         if self.dataset is None:
             self.load_datasets()
         
-        file_path = (
-            "exp" + paramsDictToString(params, forFileName=True) + 
-            "Epochs" + str(self.conf["ep"]) + ".pth"
-        )
+        #file_path = ("exp" + paramsDictToString(params, forFileName=True) + "Epochs" + str(self.conf["ep"]) + ".pth" )
+        file_path = ("exp"+str(params["modelType"])+"LR" +str(params["LR"])+"STEP"+str(params["STEP"])+"gamma"+str(params["GAMMA"])+"Epochs" + str(self.conf["ep"]) + ".pth" )
         print(f"Testing params {params} with file {file_path}")
         
         train_again = not Path(file_path).is_file()
@@ -130,17 +114,8 @@ class PyTorchModelExperiment(ModelExperiment):
         train_time = 0
         if self.conf["Train"] or train_again:
             start = time.time()
-            model = train_pytorchModel(
-                dataset=self.dataset,
-                device=self.device,
-                num_classes=self.num_classes,
-                file_path=file_path,
-                num_epochs=self.conf["ep"],
-                trainAgain=train_again,
-                proportion=self.proportion,
-                mType=params["modelType"],
-                trainParams=params
-            )
+            model = train_pytorchModel(dataset=self.dataset, device=self.device, num_classes=self.num_classes, file_path = file_path, num_epochs=self.conf["ep"],
+                trainAgain=train_again, proportion=self.proportion, mType=params["modelType"], BS = self.conf["BS"], trainParams=params)
             train_time = time.time() - start
         
         # Testing
@@ -160,6 +135,8 @@ class PyTorchModelExperiment(ModelExperiment):
         test_time = time.time() - start
         
         metrics = {'prec': prec, 'rec': rec, 'oprec': oprec, 'orec': orec}
+        del model
+        torch.cuda.empty_cache()
         return metrics, train_time, test_time
 
 
@@ -194,8 +171,6 @@ class DETRExperiment(ModelExperiment):
             
             if params["modelType"] == "DETR":
                 model = train_DETR(self.conf, detr_dataset, "DETR_exp_", train_params, file_path)
-            elif params["modelType"] == "DEFDETR":
-                model = train_DeformableDETR(self.conf, detr_dataset, "DETR_exp_", train_params, file_path)
             else:
                 raise ValueError(f"Unknown DETR model type: {params['modelType']}")
             
