@@ -4,6 +4,7 @@ import os
 import time
 import cv2
 import torch
+import gc
 
 from pathlib import Path
 from itertools import product
@@ -123,20 +124,13 @@ class PyTorchModelExperiment(ModelExperiment):
         pred_folder = os.path.join(self.conf["Pred_dir"], "exp" + paramsDictToString(params))
         orig_folder = os.path.join(self.conf["TV_dir"], self.conf["Test_dir"], "images")
         
-        prec, rec, oprec, orec = predict_pytorch(
-            dataset_test=self.dataset_test,
-            model=model,
-            device=self.device,
-            predConfidence=params["predconf"],
-            postProcess=0,
-            predFolder=pred_folder,
-            origFolder=orig_folder
-        )
+        prec, rec, oprec, orec = predict_pytorch(dataset_test=self.dataset_test, model=model, device=self.device, predConfidence=params["predconf"], postProcess=0, predFolder=pred_folder, origFolder=orig_folder)
         test_time = time.time() - start
         
         metrics = {'prec': prec, 'rec': rec, 'oprec': oprec, 'orec': orec}
         del model
         torch.cuda.empty_cache()
+        gc.collect()
         return metrics, train_time, test_time
 
 

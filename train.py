@@ -31,12 +31,12 @@ import numpy as np
 import torch.nn as nn
 from torchvision.ops.feature_pyramid_network import FeaturePyramidNetwork
 from torchvision.models.feature_extraction import create_feature_extractor
-from torchvision.models import (
-    convnext_tiny, convnext_small, convnext_base, convnext_large,
-    ConvNeXt_Tiny_Weights, ConvNeXt_Small_Weights, ConvNeXt_Base_Weights,
-    ConvNeXt_Large_Weights)
+from torchvision.models import (convnext_tiny, convnext_small, convnext_base, convnext_large, ConvNeXt_Tiny_Weights, ConvNeXt_Small_Weights, ConvNeXt_Base_Weights, ConvNeXt_Large_Weights)
 
-from transformers import DetrForObjectDetection, DetrImageProcessor
+from torchvision.models.detection.rpn import AnchorGenerator
+
+from transformers import DetrForObjectDetection, DetrImageProcessor, DetrConfig
+
 import time
 #from torch.optim.lr_scheduler import LinearLR, MultiStepLR, SequentialLR
 
@@ -73,13 +73,7 @@ class BackboneWithFPN(nn.Module):
         return self.fpn(self.body(x))
 
 
-def convnext_fpn_backbone(
-    backbone_name='convnext_base',
-    trainable_layers=6,
-    extra_blocks=None,
-    norm_layer=None,
-    out_channels=256
-):
+def convnext_fpn_backbone(backbone_name='convnext_base', trainable_layers=8, extra_blocks=None, norm_layer=None, out_channels=256):
     # Map name to model + weights
     backbone_fns = {
         "convnext_tiny":   (convnext_tiny,   ConvNeXt_Tiny_Weights.DEFAULT),
@@ -110,13 +104,7 @@ def convnext_fpn_backbone(
         if name in freeze:
             param.requires_grad_(False)
 
-    return BackboneWithFPN(
-        backbone=body,
-        in_channels_list=channels,
-        out_channels=out_channels,
-        extra_blocks=extra_blocks,
-        norm_layer=norm_layer
-    )
+    return BackboneWithFPN(backbone=body, in_channels_list=channels, out_channels=out_channels, extra_blocks=extra_blocks, norm_layer=norm_layer)
 
 
 def makeTrainYAML(conf, fileName = 'trainAUTO.yaml', pDict = {}):
@@ -169,84 +157,6 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     
     return model_path
 
-def diagnose_training_data(data_loader, processor, num_samples=3):
-    """
-    Diagnose training data format issues
-    """
-    print("\n" + "="*60)
-    print("DIAGNOSTIC: Checking Training Data Format")
-    print("="*60)
-    
-    for i, (images, targets) in enumerate(data_loader):
-        if i >= num_samples:
-            break
-            
-        print(f"\n--- Sample {i} ---")
-        
-        # Get original image
-        try:
-            img_np = images[0].permute(1, 2, 0).cpu().numpy()
-        except:
-            img_np = np.array(images[0])
-        
-        orig_h, orig_w = img_np.shape[:2]
-        print(f"Original image shape (HxW): {orig_h}x{orig_w}")
-        
-        # Get annotations BEFORE processor
-        if len(targets) > 0 and "annotations" in targets[0]:
-            raw_anns = targets[0]["annotations"]
-            print(f"Number of annotations: {len(raw_anns)}")
-            
-            # Check first few annotations
-            for j, ann in enumerate(raw_anns[:3]):
-                bbox = ann["bbox"]
-                print(f"  Ann {j}: bbox={bbox}, category={ann.get('category_id', 'N/A')}")
-                
-                # Verify bbox is valid
-                x, y, w, h = bbox
-                if x < 0 or y < 0 or w <= 0 or h <= 0:
-                    print(f"    ⚠️ WARNING: Invalid bbox coordinates!")
-                if x + w > orig_w or y + h > orig_h:
-                    print(f"    ⚠️ WARNING: Bbox extends beyond image! (img: {orig_w}x{orig_h})")
-        
-        # Process through processor
-        imgs = list(images)
-        annotations = [{"image_id": idx, "annotations": t["annotations"]} 
-                      for idx, t in enumerate(targets)]
-        
-        encoding = processor(images=imgs, annotations=annotations, 
-                           return_tensors="pt", do_rescale=True)
-        
-        pixel_values = encoding["pixel_values"]
-        proc_h, proc_w = pixel_values.shape[2], pixel_values.shape[3]
-        print(f"Processed image shape (HxW): {proc_h}x{proc_w}")
-        
-        # Check processed labels
-        labels = encoding["labels"]
-        if len(labels) > 0:
-            label = labels[0]
-            print(f"Processed label keys: {label.keys()}")
-            
-            if "boxes" in label:
-                boxes = label["boxes"]
-                print(f"  Boxes shape: {boxes.shape}")
-                print(f"  Boxes (first 3): {boxes[:3].tolist()}")
-                print(f"  Boxes format: {'normalized cxcywh' if boxes.max() <= 1.0 else 'absolute coordinates'}")
-                
-                # Check if boxes are reasonable
-                if boxes.max() > 1.0:
-                    print(f"    ⚠️ WARNING: Boxes should be normalized [0,1] but found max={boxes.max():.4f}")
-            
-            if "class_labels" in label:
-                class_labels = label["class_labels"]
-                print(f"  Class labels: {class_labels.tolist()}")
-        
-        print(f"  Pixel values range: [{pixel_values.min():.4f}, {pixel_values.max():.4f}]")
-    
-    print("\n" + "="*60)
-    print("End of Diagnostic")
-    print("="*60 + "\n")
-
 def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
     """
     Train DETR model with correct configuration for single-class detection.
@@ -265,7 +175,6 @@ def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
     processor = DetrImageProcessor.from_pretrained(processor_name)
     
     # Create or load model
-    from transformers import DetrConfig
     config = DetrConfig.from_pretrained(processor_name)
     config.num_labels = 1
     model = DetrForObjectDetection(config)
@@ -358,14 +267,86 @@ def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
     
     return model
 
-def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', min_size=224, max_size=1333):
-    backbone = convnext_fpn_backbone(backbone_name=backbone_name)
-    model = MaskRCNN(
-        backbone,
-        num_classes=num_classes,
-        min_size=min_size,
-        max_size=max_size
+def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', v2=True, min_size=224, max_size=1333, input_channels_dict=None, backbone_fns=None, extra_blocks=None, norm_layer=None, out_channels=256, trainable_layers=3,):
+    if input_channels_dict is None:
+        input_channels_dict = {
+            'convnext_tiny': [96, 192, 384, 768],
+            'convnext_small': [96, 192, 384, 768],
+            'convnext_base': [128, 256, 512, 1024],
+            'convnext_large': [192, 384, 768, 1536],
+        }
+    # Map name to model + weights
+    if backbone_fns is None:
+        backbone_fns = {
+            "convnext_tiny":   (convnext_tiny,   ConvNeXt_Tiny_Weights.DEFAULT),
+            "convnext_small":  (convnext_small,  ConvNeXt_Small_Weights.DEFAULT),
+            "convnext_base":   (convnext_base,   ConvNeXt_Base_Weights.DEFAULT),
+            "convnext_large":  (convnext_large,  ConvNeXt_Large_Weights.DEFAULT),
+        }
+
+    if backbone_name not in backbone_fns:
+        raise ValueError(f"Invalid backbone name: {backbone_name}")
+
+    backbone_fn, weights = backbone_fns[backbone_name]
+    channels = input_channels_dict[backbone_name]
+
+    # Get ConvNeXt features and create extractor
+    convnext = backbone_fn(weights=weights).features
+    return_layers = {'1': '0', '3': '1', '5': '2', '7': '3'}
+
+    # select layers that won't be frozen
+    if trainable_layers < 0 or trainable_layers > 8:
+        raise ValueError(f"Trainable layers should be in the range [0,8], got {trainable_layers}")
+    layers_to_train = ["7", "6", "5", "4", "3", "2", "1", "0"][:trainable_layers]
+    for name, parameter in convnext.named_parameters():
+        if not name[0] in layers_to_train:
+            parameter.requires_grad_(False)
+
+    backbone =  BackboneWithFPN(
+        backbone=convnext,
+        return_layers=return_layers,
+        in_channels_list=channels,
+        out_channels=out_channels,
+        extra_blocks=extra_blocks,
+        norm_layer=norm_layer
     )
+
+    if v2:
+        rpn_anchor_generator = _default_anchorgen()
+        rpn_head = RPNHead(
+            backbone.out_channels,
+            rpn_anchor_generator.num_anchors_per_location()[0],
+            conv_depth=2
+        )
+        box_head = FastRCNNConvFCHead(
+            (backbone.out_channels, 7, 7),
+            [256, 256, 256, 256],
+            [1024],
+            norm_layer=nn.BatchNorm2d
+        )
+        mask_head = MaskRCNNHeads(
+            backbone.out_channels,
+            [256, 256, 256, 256],
+            1,
+            norm_layer=nn.BatchNorm2d
+        )
+        model = MaskRCNN(
+            backbone,
+            num_classes=num_classes,
+            rpn_anchor_generator=rpn_anchor_generator,
+            rpn_head=rpn_head,
+            box_head=box_head,
+            mask_head=mask_head,
+            min_size=min_size,
+            max_size=max_size
+        )
+    else:
+        model = MaskRCNN(
+            backbone,
+            num_classes=num_classes,
+            min_size=min_size,
+            max_size=max_size
+        )
 
     # Replace box predictor head
     in_features = model.roi_heads.box_predictor.cls_score.in_features
@@ -373,17 +354,30 @@ def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', min_size=2
 
     # Replace mask predictor head
     in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, 256, num_classes)
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(
+        in_features_mask, 256, num_classes
+    )
 
     return model
 
+"""
+def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', min_size=2048, max_size=2048):
+    backbone = convnext_fpn_backbone(backbone_name=backbone_name, trainable_layers=8)
+    anchor_generator = AnchorGenerator(sizes=((32,), (64,), (128,), (256,), (512,)), aspect_ratios=((0.75, 1.0, 1.5),) * 5)
+    model = MaskRCNN(backbone, num_classes=num_classes, min_size=min_size, max_size=max_size, rpn_anchor_generator=anchor_generator)
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, 256, num_classes)
+    return model
+"""
 
+def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10, trainAgain = False, proportion = 0.9, BS = 1, mType = "maskrcnn", trainParams = {"modelType": "maskrcnn", "score": 0.05, "nms": 0.25, "predconf": 0.7, "LR": 0.005, "STEP": 100, "GAMMA":0.1}):
 
-def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10, trainAgain = False, proportion = 0.9, BS = 1,mType = "maskrcnn", trainParams = {"modelType": "maskrcnn", "score": 0.05, "nms": 0.25, "predconf": 0.7, "LR": 0.005, "STEP": 100, "GAMMA":0.1}):
-
-    num_workers = min(8, max(1, multiprocessing.cpu_count() - 4))  # tune if needed
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size = BS, shuffle=True, collate_fn=collate_fn, num_workers=num_workers, pin_memory=True, persistent_workers=True)
-
+    #num_workers = min(8, max(1, multiprocessing.cpu_count() - 4))  # tune if needed
+    #num_workers = 2 
+    #data_loader = torch.utils.data.DataLoader(dataset, batch_size = BS, shuffle=True, collate_fn=collate_fn, num_workers=num_workers, pin_memory=False, persistent_workers=True)
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=BS, shuffle=True, collate_fn=collate_fn, num_workers=0, pin_memory=False)
 
     # probably have a look at this  https://discuss.pytorch.org/t/how-to-use-collate-fn/27181/2
     print("Training Dataset Length "+str(len(dataset)))
@@ -410,9 +404,8 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size = trainParams["STEP"], gamma = trainParams["GAMMA"] )
 
         # train with patience
-        patience = 2
+        patience = 10
         best_loss = 9999
-        best_state_dict = None
         epochs_without_improvement = 0
 
         for epoch in range(num_epochs):
@@ -422,27 +415,23 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
             # update the learning rate
             lr_scheduler.step()
 
-            print("EPOCH LOSS")    
-            print(epoch_loss)
-
             if epoch_loss < best_loss:
-                print("IMPROVED")
                 best_loss = epoch_loss
                 epochs_without_improvement = 0
-                best_state_dict = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                torch.save(model.state_dict(), file_path)  # save best to final path
             else:
                 epochs_without_improvement += 1
-                print("NOT IMPROVED FOR "+str(epochs_without_improvement))
                 if epochs_without_improvement >= patience:
                     print(f"Early stopping at epoch {epoch}, best loss {best_loss:.4f}")
+                    break
+            print("@@@@@@@@@@@@@@@@@@@@ EPOCH LOSS "+str(epoch_loss)+" BEST LOSS "+str(best_loss))
 
         # Save the model's state_dict 
-        torch.save(best_state_dict, file_path)
-        model.load_state_dict(best_state_dict)
+        model.load_state_dict(torch.load(file_path))
         model.to(device)
 
     else:# loading pretrained model
-        print("not training again")
+        """
         if mType == "maskrcnn":
             model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(weights="DEFAULT")
             # Replace the box predictor with one matching the saved model's class count (2 classes, including background)
@@ -467,14 +456,9 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
             # replace the pre-trained head with a new one (this is only to change the number of classes predicted)
             model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
         elif mType == "convnextmaskrcnn":
-            backbone = convnext_fpn_backbone() # use defaults convnext base and 6 trainable layers
+            backbone = convnext_fpn_backbone() 
 
-            model = MaskRCNN(
-                backbone,
-                num_classes=num_classes,
-                min_size=224,  # match what you trained with
-                max_size=1333,
-            )
+            model = MaskRCNN(backbone,  num_classes=num_classes, min_size= 800, max_size = 2048 )
 
             # Step 2: Replace the heads (optional, for sanity check)
             # Box predictor
@@ -521,6 +505,11 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
             model.transform.max_size = size
         else: raise Exception(" train_pytorchModel, unrecognized model type "+str(mType))
 
+        """
+
+        print("not training again")
+        model = get_model_instance_segmentation(num_classes, mType=mType)
+
         #reload the model
         model.to(device)
 
@@ -553,44 +542,50 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
         lr_scheduler = warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor)
 
     for images, targets in metric_logger.log_every(data_loader, print_freq, header):
-        images = list(image.to(device) for image in images)
-        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+        try:
 
-        loss_dict = model(images, targets)
+            images = list(image.to(device) for image in images)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-        losses = sum(loss for loss in loss_dict.values())
+            loss_dict = model(images, targets)
 
-        # reduce losses over all GPUs for logging purposes
-        loss_dict_reduced = reduce_dict(loss_dict)
-        losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+            losses = sum(loss for loss in loss_dict.values())
 
-        loss_value = losses_reduced.item()
+            # reduce losses over all GPUs for logging purposes
+            loss_dict_reduced = reduce_dict(loss_dict)
+            losses_reduced = sum(loss for loss in loss_dict_reduced.values())
 
-        if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
-            print(loss_dict_reduced)
-            raise Exception("NAN LOSS in train one epoch")
+            loss_value = losses_reduced.item()
 
-        optimizer.zero_grad()
-        losses.backward()
-        # gradient clipping!
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
-        optimizer.step()
+            if not math.isfinite(loss_value):
+                print("Loss is {}, stopping training".format(loss_value))
+                print(loss_dict_reduced)
+                raise Exception("NAN LOSS in train one epoch")
 
-        if lr_scheduler is not None:
-            lr_scheduler.step()
+            optimizer.zero_grad()
+            losses.backward()
+            # gradient clipping!
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+            optimizer.step()
 
-        metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+            if lr_scheduler is not None:
+                lr_scheduler.step()
 
-        # memory cleanup
-        #del images
-        #del targets
-        #del loss_dict
-       #del losses
-    torch.cuda.empty_cache()
+            metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
+            metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
-
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                print(f"OOM on batch — skipping. Consider reducing BS.")
+                optimizer.zero_grad()
+            else:
+                raise e
+        finally:
+            for var in ['images', 'targets', 'loss_dict', 'losses', 'loss_dict_reduced', 'losses_reduced']:
+                if var in dir():
+                    del var
+            torch.cuda.empty_cache()
+ 
     return metric_logger
 
 def collate_fn(batch):
@@ -649,11 +644,7 @@ def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
         in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
         hidden_layer = 256
         # and replace the mask predictor with a new one (this is only to change the number of classes predicted)
-        model.roi_heads.mask_predictor = MaskRCNNPredictor(
-            in_features_mask,
-            hidden_layer,
-            num_classes
-        )
+        model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, hidden_layer, num_classes)
     elif mType == "fasterrcnn":
         model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights="DEFAULT")
 

@@ -133,51 +133,34 @@ class tDataset(CPDataset):
 # sources
 # https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
 # https://pytorch.org/vision/main/models.html
-
-# auxiliary functions for the ODDataset class
-def build_masks(img, boxes, img_h, img_w):
-    if not boxes: return np.zeros((0, img_h, img_w), dtype=np.uint8)
-    masks = np.zeros((len(boxes), img_h, img_w), dtype=np.uint8)
-    for i, (xmin, ymin, xmax, ymax) in enumerate(boxes):
-        masks[i, ymin:ymax, xmin:xmax] = (img[ymin:ymax, xmin:xmax] == 0)
-    return masks
-
-def load_boxes_from_label(label_path, img_w, img_h):
-    boxes = []
-    with open(label_path, 'r') as f:
-        for line in f:
-            _, cx, cy, w, h = map(float, line.strip().split())
-            xmin, ymin = max(0, int((cx - w/2) * img_w)), max(0, int((cy - h/2) * img_h))
-            xmax, ymax = min(img_w, int((cx + w/2) * img_w)), min(img_h, int((cy + h/2) * img_h))
-            if xmax - xmin > 1 and ymax - ymin > 1: boxes.append([xmin, ymin, xmax, ymax])
-    return boxes
-
 class ODDataset(Dataset):
     """
         Dataset for object detection with
         pytorch predefined networks
     """
-    def __init__(self, dataFolder = None, yoloFormat = True, slice = 500 , transform = None):
+    def __init__(self, dataFolder = None, yoloFormat = True, slice = 500 , transform = None, preSliced = True):
         """
             Receive a folder, should have an "images" and a "masks"
             subfolders with images with pre-defined names
-            read all images and masks there, the images are pre-sliced
+            read all images and masks there, slice them
+            with the size given and create a new folder "forOD"
+            with the cut masks and images.
 
             Store all image and mask paths in two list of names
             store also the relation to the slices to the original images
             1) what was the original image 2) what coordinate in the original
             image is the 0,0 in the slice
+
+            "preSliced" contains information on whether the images are already the right size (have already been sliced)
+            or if this method has to do it
         """
         # Data Structures:
         self.imageNameList = []
         self.maskNameList = []
-        self.labelNameList = []
         self.transform = transform
 
         self.imageFolder = os.path.join(dataFolder,"images")
         self.maskFolder = os.path.join(dataFolder,"masks")
-        self.labelFolder = os.path.join(dataFolder, "labels")
-
         self.slicesToImages = defaultdict(lambda:[])
 
         # create output Folder if it does not exist
@@ -195,26 +178,55 @@ class ODDataset(Dataset):
 
                 im = read_Binary_Mask(os.path.join(self.imageFolder,imageName))
 
-                # Images need to be presliced beforehand.
-                #print("Dataset: processing "+str(f))
-                # images should already have the right size
-                if im.shape[0] > slice or im.shape[1] > slice:raise Exception("ODDAtaset creator, wrongly presliced images")
-                # no need to slice, but the images are tiles that come from other images, need to store this in self.slicesToImages[
+                #check if the image already has the right size.
+                if preSliced:
+                    #print("Dataset: processing "+str(f))
+                    # images should already have the right size
+                    if im.shape[0] > slice or im.shape[1] > slice:raise Exception("ODDAtaset creator, wrongly presliced images")
+                    # no need to slice, but the images are tiles that come from other images, need to store this in self.slicesToImages[
 
-                # Mask cleanup should happen when tile building
-                #cleanUpMask(mask, areaTH = 200)
-                #mask = cleanUpMaskBlackPixels(mask, im, areaTH = 150 )
+                    cleanUpMask(mask, areaTH = 200)
+                    mask = cleanUpMaskBlackPixels(mask, im, areaTH = 150 )
 
-                if np.sum(mask==0) > 100: # add only non-empty masks to the list of images and masks
-                    #print(os.path.join(self.imageFolder,imageName)+" has boxes")
+                    if np.sum(mask==0) > 100: # add only non-empty masks to the list of images and masks
+                        #print(os.path.join(self.imageFolder,imageName)+" has boxes")
 
-                    self.imageNameList.append( os.path.join(self.imageFolder,imageName) )
-                    self.maskNameList.append( os.path.join(self.maskFolder,f) )
-                    self.labelNameList.append(os.path.join(self.labelFolder, imageName[:-4] + ".txt"))
+                        self.imageNameList.append( os.path.join(self.imageFolder,imageName) )
+                        self.maskNameList.append( os.path.join(self.maskFolder,f) )
 
-                # but add all tiles, even empty ones, to the dictionary
-                self.slicesToImages[ imageName[:imageName.rfind("x")]+imageName[-4:]].append(imageName)
 
+                    # but add all tiles, even empty ones, to the dictionary
+                    self.slicesToImages[ imageName[:imageName.rfind("x")]+imageName[-4:]].append(imageName)
+
+                else:
+                    # CAREFUL, THIS PART MAY NO BE UP TO DATE
+                    # slice mask and image together, store them in the forOD folder
+                    wSize = (slice,slice)
+                    count = 0
+                    for (x, y, window) in sliding_window(im, stepSize = int(slice*0.8), windowSize = wSize ):
+                        # get mask window
+                        if window.shape == (slice,slice) :
+                            # do we need to fix this?
+                            # this should be done better, with padding!, maybe https://docs.opencv.org/3.4/dc/da3/tutorial_copyMakeBorder.html
+                            maskW = mask[y:y + wSize[1], x:x + wSize[0]]
+                            # discard empty masks
+                            cleanUpMask(maskW)
+                            # here we should probably add cleanUpMaskBlackPixels and maybe do it for YOLO too (in buildtrainvalidation?)
+
+                            # always store the tile
+                            cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
+
+                            if np.sum(maskW==0) > 100:
+                            #if True:
+                                # store them both
+                                cv2.imwrite(os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png"),window)
+                                self.imageNameList.append( os.path.join(self.outFolder,"Tile"+str(count)+f[2:-6]+".png") )
+                                cv2.imwrite(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"),maskW)
+                                self.maskNameList.append(os.path.join(self.outFolder,"MaskTile"+str(count)+f[2:-6]+".png"))
+
+                                self.slicesToImages[imageName].append(("Tile"+str(count)+f[2:-6]+".png",x,y))
+
+                                count+=1
 
         #print(self.slicesToImages)
         #for k,v in self.slicesToImages.items():
@@ -222,37 +234,66 @@ class ODDataset(Dataset):
         #print(len(self.slicesToImages))
 
     def __getitem__(self, idx):
-        img = Image.open(self.imageNameList[idx]).convert("L")  # grayscale
-        img_np = np.array(img)
-        img_h, img_w = img_np.shape[:2]
-        boxes = load_boxes_from_label(self.labelNameList[idx], img_w, img_h)
-        masks = build_masks(img_np, boxes, img_h, img_w)
-        img_t = tv_tensors.Image(torch.as_tensor(img_np).unsqueeze(0).repeat(3, 1, 1))
-        target = {
-            "boxes": tv_tensors.BoundingBoxes(torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4), format="XYXY", canvas_size=(img_h, img_w)),
-            "masks": tv_tensors.Mask(torch.as_tensor(masks, dtype=torch.uint8)),
-            "labels": torch.ones((len(boxes),), dtype=torch.int64)
-        }
-        if self.transform is not None: img_t, target = self.transform(img_t, target)
-        return img_t, target
+        # load images and masks
+        img_path = self.imageNameList[idx]
+        mask_path = self.maskNameList[idx]
+        img = Image.open(img_path).convert("RGB")
+        #img = read_Color_Image(img_path)
 
+        #mask = read_Binary_Mask(mask_path)
+        mask = Image.open(mask_path)
+        # convert the PIL Image into a numpy array
+        mask = np.array(mask)
+        numLabels, labelIm,  stats, centroids = cv2.connectedComponentsWithStats(255-mask)
 
+        obj_ids = np.unique(labelIm)
+        #print(obj_ids)
+        #obj_ids = torch.unique(mask)
+        # first id is the background, so remove it
+        obj_ids = obj_ids[1:]
+        num_objs = len(obj_ids)
 
-    """
-    def __getitem__(self, idx):
-        img = read_Binary_Mask(self.imageNameList[idx])
-        #img_pil = Image.open(img_path).convert("RGB")
-        img_h, img_w = img.shape[:2]
-        boxes = load_boxes_from_label(self.labelNameList[idx], img_w, img_h)
-        masks = build_masks(img, boxes, img_h, img_w)
-        img_t = tv_tensors.Image(torch.as_tensor(img).unsqueeze(0).repeat(3, 1, 1))
-        target = {"boxes": tv_tensors.BoundingBoxes(torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4), format="XYXY", canvas_size=(img_h, img_w)),
-                "masks": tv_tensors.Mask(torch.as_tensor(masks, dtype=torch.uint8)),
-                "labels": torch.ones((len(boxes),), dtype=torch.int64)}
-        if self.transform is not None: img_t, target = self.transform(img_t, target)
-        return img_t, target
-    """    
-        
+        # split into a set of masks
+        masks = labelIm == obj_ids[:, None, None]
+
+        num_objs = len(obj_ids)
+        boxes = []
+        for i in range(num_objs):
+            pos = np.nonzero(masks[i])
+            xmin = np.min(pos[1])
+            xmax = np.max(pos[1])
+            ymin = np.min(pos[0])
+            ymax = np.max(pos[0])
+            if xmax-xmin > 1 and ymax-ymin > 1:
+                boxes.append([xmin, ymin, xmax, ymax])
+            else:
+                pass
+                #print("weird box "+str([xmin, ymin, xmax, ymax]), "ignoring it")
+                #raise Exception("dataset.py, wrong mask should have been cleaned up ")
+
+        # only one class
+        labels = torch.ones((num_objs,), dtype=torch.int64)
+        masks = torch.as_tensor(masks, dtype=torch.uint8)
+
+        # Wrap sample and targets into torchvision tv_tensors:
+        img = tv_tensors.Image(img)
+
+        target = {}
+        #target["boxes"] = [] if len(boxes)==0 else tv_tensors.BoundingBoxes(torch.as_tensor(boxes), format="XYXY", canvas_size=F.get_size(img))
+        target["boxes"] = tv_tensors.BoundingBoxes(
+            torch.as_tensor(boxes).reshape(-1, 4),  # handles both empty and non-empty
+            format="XYXY",
+            canvas_size=F.get_size(img)
+        )
+        target["masks"] = tv_tensors.Mask( masks )
+        target["labels"] = torch.as_tensor(labels)
+
+        if self.transform is not None:
+            img, target = self.transform(img, target)
+
+        #print(target)
+        return img, target
+
     def __len__(self):
         return len(self.imageNameList)
 
