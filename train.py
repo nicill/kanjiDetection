@@ -4,6 +4,7 @@ from ultralytics import settings
 import torch
 import yaml
 import sys
+import shutil
 
 from datasets import ODDataset
 import torchvision
@@ -119,43 +120,35 @@ def makeTrainYAML(conf, fileName = 'trainAUTO.yaml', pDict = {}):
 
 def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     """
-    Train a YOlO model from a
-    train and validation folder
+        train a yolo model with LR, mosaic and score as parameters
     """
     resfolder = conf["Train_res"]
+    print("")
     epochs = conf["ep"]
     name = prefix+"epochs"+str(epochs)+'ex'
     valfolder = conf["Valid_res"]
     imgsize = conf["slice"]
-    #resultstxt = os.path.join(resfolder,valfolder,'results_' + name + '.txt')
-
     settings.update({'runs_dir':resfolder})
     model = YOLO('yolov8n.pt')
-
-    # now also add any possible parameters from an experiment
     scVal = 0.5 if "scale" not in params else params["scale"]
     mosVal = 1.0 if "mosaic" not in params else params["mosaic"]
-
-    overrides = {'data': datasrc, 'epochs': epochs, 'imgsz': imgsize, 'name': name, 
-                  'device': 0,'patience': 10,'exist_ok': True, 'scale': scVal, 'mosaic': mosVal}
-
-    model.overrides.update(overrides)
-    results = model.train()
-
-    #print("yolo printing parameters")
-    #print(overrides)
-    #print(model.trainer.args)
-
-    #results = model.train(data=datasrc, epochs=epochs, imgsz=imgsize,
-    #            name=name,device=0, patience = 10, exist_ok = True,
-    #            scale = scVal, mosaic = mosVal)
-    results = model.val(project=resfolder,name=valfolder,save_json=True)
-
-    # Return the path where the model was saved
-    model_path = os.path.join(resfolder, "detect", name, "weights", "best.pt")
-    print(f"Model saved to: {model_path}")
+    lr0Val = 0.01 if "lr0" not in params else params["lr0"]
     
-    return model_path
+    overrides = {'data': datasrc, 'epochs': epochs, 'imgsz': imgsize, 'name': name, 'device': 0, 'patience': 10, 'exist_ok': True, 'optimizer': 'SGD', 'scale': scVal, 'mosaic': mosVal,
+                 'fliplr': 0.0, 'flipud': 0.0, 'box': 10.0, 'cls': 0.3, 'lr0': lr0Val, 'project': resfolder,}
+    train_results = model.train(**overrides)
+    # check overrides were correctly read
+    print("@@@ TRAINING ARGS CHECK @@@")
+    for k in ['fliplr', 'flipud', 'box', 'cls', 'scale', 'mosaic', 'epochs', 'imgsz', 'lr0']:
+        print(f"  {k}: {getattr(model.trainer.args, k, 'NOT FOUND')}")
+    model.val(project=resfolder, name=valfolder, save_json=True)
+    model_path = os.path.join(train_results.save_dir,"weights","best.pt")
+    print(f"Model saved to: {model_path}")
+
+    file_path = ("expYOLO"+"LR" +str(params["lr0"])+"scale"+str(params["scale"])+"mosaic"+str(params["mosaic"])+"Epochs" + str(conf["ep"]) + ".pt" )
+    shutil.copy(model_path, file_path)
+
+    return file_path
 
 def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
     """
@@ -431,82 +424,6 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
         model.to(device)
 
     else:# loading pretrained model
-        """
-        if mType == "maskrcnn":
-            model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(weights="DEFAULT")
-            # Replace the box predictor with one matching the saved model's class count (2 classes, including background)
-            # get number of input features for the classifier
-            in_features = model.roi_heads.box_predictor.cls_score.in_features
-            # replace the pre-trained head with a new one
-            model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-
-            # Reapply the mask predictor
-            in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-            hidden_layer = 256  # Ensure this matches your training setup
-            model.roi_heads.mask_predictor = MaskRCNNPredictor(
-                in_features_mask,
-                hidden_layer,
-                num_classes
-            )
-        elif mType == "fasterrcnn":
-            model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights="DEFAULT")
-
-            # get number of input features for the classifier
-            in_features = model.roi_heads.box_predictor.cls_score.in_features
-            # replace the pre-trained head with a new one (this is only to change the number of classes predicted)
-            model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-        elif mType == "convnextmaskrcnn":
-            backbone = convnext_fpn_backbone() 
-
-            model = MaskRCNN(backbone,  num_classes=num_classes, min_size= 800, max_size = 2048 )
-
-            # Step 2: Replace the heads (optional, for sanity check)
-            # Box predictor
-            in_features = model.roi_heads.box_predictor.cls_score.in_features
-            model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-
-            # Mask predictor
-            in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-            hidden_layer = 256
-            model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, hidden_layer, num_classes)
-
-        elif mType == "retinanet":
-            model = torchvision.models.detection.retinanet_resnet50_fpn_v2(
-                weights=RetinaNet_ResNet50_FPN_V2_Weights.COCO_V1
-            )
-            num_anchors = model.head.classification_head.num_anchors
-            model.head.classification_head = RetinaNetClassificationHead(
-                in_channels=256,
-                num_anchors=num_anchors,
-                num_classes=num_classes,
-                norm_layer=partial(torch.nn.GroupNorm, 32)
-            )
-        elif mType == "fcos":
-            # Don’t load COCO weights if you’ll be restoring your own checkpoint
-            model = torchvision.models.detection.fcos_resnet50_fpn(weights=None)
-
-            # Rebuild classification head with the right number of classes
-            num_anchors = model.head.classification_head.num_anchors
-            model.head.classification_head = FCOSClassificationHead(in_channels=256, num_anchors=num_anchors, num_classes=num_classes, norm_layer=partial(torch.nn.GroupNorm, 32))
-        elif mType == "ssd":
-            size = 300
-            # Load the Torchvision pretrained model.
-            model = torchvision.models.detection.ssd300_vgg16(
-                weights=SSD300_VGG16_Weights.COCO_V1
-            )
-            # Retrieve the list of input channels.
-            in_channels = _utils.retrieve_out_channels(model.backbone, (size, size))
-            # List containing number of anchors based on aspect ratios.
-            num_anchors = model.anchor_generator.num_anchors_per_location()
-            # The classification head.
-            model.head.classification_head = SSDClassificationHead(in_channels=in_channels, num_anchors=num_anchors, num_classes=num_classes )
-            # Image size for transforms.
-            model.transform.min_size = (size,)
-            model.transform.max_size = size
-        else: raise Exception(" train_pytorchModel, unrecognized model type "+str(mType))
-
-        """
-
         print("not training again")
         model = get_model_instance_segmentation(num_classes, mType=mType)
 

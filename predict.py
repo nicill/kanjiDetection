@@ -175,7 +175,7 @@ def predict_new_Set_yolo(conf):
             #boxesToTextFile(result,predict_dir+'/predictions_list_' + currentmodel + '_' + os.path.basename(imPath) +'.txt')
             outMask = boxesToMaskFile(result,predict_dir+'/PROVM' + currentmodel + '_' + os.path.basename(imPath) +'.png',image.shape)
 
-def predict_yolo(conf, prefix = 'combined_data_'):
+def predict_yolo(conf, modelpath = './'):
 
     testPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"images")
     boxPath = os.path.join(conf["TV_dir"],conf["Test_dir"],"labels")
@@ -189,18 +189,15 @@ def predict_yolo(conf, prefix = 'combined_data_'):
     invScore = []
     totalTP, totalFP, totalFN = 0, 0, 0
     
-    # Use the prefix parameter directly
-    currentmodel = prefix
-    
     # Use the same key that train_YOLO uses
-    train_res_key = "Train_res" if "Train_res" in conf else "trainResFolder"
-    modelpath = os.path.join(conf[train_res_key], "detect", currentmodel, "weights", "best.pt")
     print(f"predict_yolo: Loading model from {modelpath}")
     
     # Verify model exists
     if not Path(modelpath).exists():
         raise FileNotFoundError(f"Model not found at: {modelpath}")
     
+    currentmodel = Path(modelpath).stem
+
     detectionModel = AutoDetectionModel.from_pretrained(
         model_type='yolov8', 
         model_path=modelpath, 

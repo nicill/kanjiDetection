@@ -62,19 +62,17 @@ class YOLOExperiment(ModelExperiment):
         makeTrainYAML(self.conf, yaml_file, params)
         
         # Training
+        file_path = ("expYOLO"+"LR"+str(params["lr0"])+"scale"+str(params["scale"])+"mosaic"+str(params["mosaic"])+"Epochs"+str(self.conf["ep"])+".pt")
         train_time = 0
-        if self.conf["Train"]:
+        if self.conf["Train"] or not os.path.exists(file_path):
             start = time.time()
-            train_YOLO(self.conf, yaml_file, prefix, params=params)
+            file_path = train_YOLO(self.conf, yaml_file, prefix, params=params)
             train_time = time.time() - start
         
         # Testing
         print("Testing YOLO model...")
         start = time.time()
-        prec, rec, oprec, orec = predict_yolo(
-            self.conf, 
-            prefix + "epochs" + str(self.conf["ep"]) + 'ex'
-        )
+        prec, rec, oprec, orec = predict_yolo( self.conf, file_path )
         test_time = time.time() - start
         
         metrics = {'prec': prec, 'rec': rec, 'oprec': oprec, 'orec': orec}
@@ -266,4 +264,28 @@ def MODULARDLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params
     
     print("\n=== All Experiments Complete ===")
 
+
+class ExperimentRunner:
+
+    def __init__(self, conf):
+        self.conf = conf
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print("Preparing datasets once...")
+        self.base = ModelExperiment(conf, self.device)
+        self.base.prepare_data()
+        self.yolo = YOLOExperiment(conf, self.device)
+        self.pytorch = PyTorchModelExperiment(conf, self.device)
+        self.detr = DETRExperiment(conf, self.device)
+
+    def run_grid(self, experiment, grid, name):
+        print(f"\n=== {name} GRID ===")
+        for params in grid:
+            print(f"\n@@@@ {name} {params}")
+            try:
+                metrics, train_time, test_time = experiment.train_and_test(params)
+                experiment.write_results(params, metrics, train_time, test_time)
+                print(f"Prec:{metrics['oprec']:.4f} Rec:{metrics['orec']:.4f}")
+            except Exception as e:
+                print(f"{name} failed: {e}")
+            torch.cuda.empty_cache(); gc.collect()
 

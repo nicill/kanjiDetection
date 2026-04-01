@@ -28,7 +28,7 @@ from dataHandlding import (buildTRVT,buildNewDataTesting,separateTrainTest,
 from predict import predict_yolo, predict_pytorch, predict_DETR
 
 from transformers import DetrForObjectDetection, DetrImageProcessor
-from experimentsUtils import MODULARDLExperiment
+from experimentsUtils import MODULARDLExperiment, ExperimentRunner
 from itertools import product
 
 
@@ -283,39 +283,43 @@ def classicalDescriptorExperiment(fName):
 
 # Single experiment:
 if __name__ == "__main__":
-    # Configuration file name, can be entered in the command line
-    configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
+    print("CUDA:",torch.cuda.is_available())
 
-    # classical descriptor experiment
-    # classicalDescriptorExperimentSakuma2(configFile)
+    doYolo,doPytorch,doDETR = True,True,False
 
-    print("IS CUDA AVAILABLE???????????????????????")
-    print(torch.cuda.is_available())
+    confY,confP=[read_config(sys.argv[i]) if len(sys.argv)> i else read_config(f) 
+                 for i,f in [(1,"config.ini"),(2,"config.ini")]]
 
-    doYolo = False
-    doPytorch = True
-    doDETR = False
+    rY ,rP = ExperimentRunner(confY),ExperimentRunner(confP)
 
-    # Configuration file name, can be entered in the command line
-    configFile = "config.ini" if len(sys.argv) < 2 else sys.argv[1]
+    if doYolo: 
+        rY.run_grid(rY.yolo,[dict(lr0=lr,mosaic=m,scale=s) for lr,m,s in product([0.005,0.01,0.001],[0.0,1.0],[0.0,0.5])],"YOLO")
 
-    # DL experiment
-    conf = read_config(configFile)
-    print(conf)
-    
-    # Define single parameter sets
-    #yolo_params = {"scale": 0.45, "mosaic": 0} if doYolo else None
-    #detr_params = {"modelType": "DETR", "lr": 5e-6, "batch_size": 8, "predconf": 0.5,"nms_iou": 0.5, "max_detections": 50} if doDETR else None
+    if doPytorch:
+        rP.run_grid(rP.pytorch,[dict(modelType=m,score=sc,nms=n,predconf=pc,LR=lr,STEP=st,GAMMA=g)
+                                for m,lr,st,g,sc,n,pc in product(["retinanet"],[0.001],[50],[0.1],[0.1],[0.3],[0.7])],"PYTORCH")
 
-    # Run experiments
-    for pars in product(["fcos","retinanet"],[0.005, 0.01], [50], [0.1, 0.5], [0.05, 0.1], [0.2, 0.3], [0.5, 0.7]):
-    #for pars in product(["maskrcnn","fasterrcnn","ssd","fcos","retinanet","convnextmaskrcnn"],[0.005, 0.01, 0.001], [50, 100], [0.1, 0.5], [0.05, 0.1], [0.2, 0.3], [0.5, 0.7]):
-    #for pars in product(["convnextmaskrcnn"],[0.005], [100], [0.1], [0.1], [0.3], [0.7]):
-        mT, lr, step, gamma, score, nms, predconf = pars
-        print(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ now experimenting with @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ "+str(pars))
-        pytorch_params = {"modelType": mT, "score": score, "nms": nms, "predconf": predconf, "LR": lr, "STEP": step, "GAMMA": gamma}
-        MODULARDLExperiment(conf, None, pytorch_params, None)
-        print(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ END @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ "+str(pars))
+    if doDETR:
+        rP.run_grid(rP.detr,[dict(modelType=m,lr=lr,batch_size=bs,predconf=pc,max_detections=md)
+                             for m,lr,bs,pc,md in product(["DETR"],[1e-4],[4],[0.7],[100])],"DETR")
+    sys.exit()
+
+    # Run experiments (OLD!)
+    if doPytorch:
+        #for pars in product(["maskrcnn","fasterrcnn","ssd","fcos","retinanet","convnextmaskrcnn"],[0.005, 0.01, 0.001], [50, 100], [0.1, 0.5], [0.05, 0.1], [0.2, 0.3], [0.5, 0.7]):
+        for pars in product(["retinanet"],[0.005], [100], [0.1], [0.1], [0.3], [0.7]):
+            mT, lr, step, gamma, score, nms, predconf = pars
+            print(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ now experimenting with @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ "+str(pars))
+            pytorch_params = {"modelType": mT, "score": score, "nms": nms, "predconf": predconf, "LR": lr, "STEP": step, "GAMMA": gamma}
+            MODULARDLExperiment(conf, None, pytorch_params, None)
+            print(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ END @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ "+str(pars))
+    if doYolo:
+        for pars in product([0.005, 0.01, 0.001], [0.0, 1.0], [0.0, 0.5]):
+            lr0, mosaic, scale = pars
+            print(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ now experimenting with @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ "+str(pars))
+            yolo_params = {"lr0": lr0, "mosaic": mosaic, "scale": scale}
+            MODULARDLExperiment(conf, yolo_params, None, None)
+            print(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ END @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ "+str(pars))        
 
 
 #initial experiment
