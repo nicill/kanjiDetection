@@ -18,6 +18,7 @@ from torchvision.models.detection import SSD300_VGG16_Weights
 
 from torchvision.models import convnext_base, ConvNeXt_Base_Weights
 from torchvision.models.detection.backbone_utils import BackboneWithFPN, LastLevelMaxPool
+from torchvision.models._utils import IntermediateLayerGetter
 
 from functools import partial
 from torchvision.models.detection import RetinaNet_ResNet50_FPN_V2_Weights
@@ -33,8 +34,12 @@ import torch.nn as nn
 from torchvision.ops.feature_pyramid_network import FeaturePyramidNetwork
 from torchvision.models.feature_extraction import create_feature_extractor
 from torchvision.models import (convnext_tiny, convnext_small, convnext_base, convnext_large, ConvNeXt_Tiny_Weights, ConvNeXt_Small_Weights, ConvNeXt_Base_Weights, ConvNeXt_Large_Weights)
+from torchvision.models.detection.faster_rcnn import _default_anchorgen
 
+from torchvision.models.detection.rpn import RPNHead
 from torchvision.models.detection.rpn import AnchorGenerator
+from torchvision.models.detection.faster_rcnn import FastRCNNConvFCHead
+from torchvision.models.detection.mask_rcnn import MaskRCNNHeads
 
 from transformers import DetrForObjectDetection, DetrImageProcessor, DetrConfig
 
@@ -133,7 +138,7 @@ def train_YOLO(conf, datasrc, prefix = 'combined_data_', params = {}):
     scVal = 0.5 if "scale" not in params else params["scale"]
     mosVal = 1.0 if "mosaic" not in params else params["mosaic"]
     lr0Val = 0.01 if "lr0" not in params else params["lr0"]
-    
+
     overrides = {'data': datasrc, 'epochs': epochs, 'imgsz': imgsize, 'name': name, 'device': 0, 'patience': 10, 'exist_ok': True, 'optimizer': 'SGD', 'scale': scVal, 'mosaic': mosVal,
                  'fliplr': 0.0, 'flipud': 0.0, 'box': 10.0, 'cls': 0.3, 'lr0': lr0Val, 'project': resfolder,}
     train_results = model.train(**overrides)
@@ -162,69 +167,69 @@ def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
     batch_size = params.get("batch_size", 1)
     lr = params.get("lr", 1e-5)
     weight_decay = params.get("weight_decay", 1e-4)
-    
+
     print(f"[DETR] File: {file_path}, Train: {trainAgain}, Device: {device}, Epochs: {epochs}")
-    
+
     processor = DetrImageProcessor.from_pretrained(processor_name)
-    
+
     # Create or load model
     config = DetrConfig.from_pretrained(processor_name)
     config.num_labels = 1
     model = DetrForObjectDetection(config)
-    
+
     if trainAgain:
         # Initialize from pretrained (except classification head)
         print(f"[DETR] Configuring model with num_labels={config.num_labels}")
         base_model = DetrForObjectDetection.from_pretrained(processor_name)
-        
-        pretrained_dict = {k: v for k, v in base_model.state_dict().items() 
+
+        pretrained_dict = {k: v for k, v in base_model.state_dict().items()
                           if k in model.state_dict() and v.shape == model.state_dict()[k].shape}
-        
+
         model.load_state_dict(pretrained_dict, strict=False)
         print(f"[DETR] Initialized with pretrained weights (except class head)")
     elif os.path.exists(file_path):
         model.load_state_dict(torch.load(file_path, map_location='cpu'))
         print(f"[DETR] Loaded model from {file_path}")
-    
+
     model.to(device)
-    
+
     if not trainAgain:
         model.eval()
         return model
-    
+
     # Training setup
     data_loader = torch.utils.data.DataLoader(
         datasrc, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_DETR_skip_empty
     )
-    
+
     optimizer = torch.optim.AdamW(
         [p for p in model.parameters() if p.requires_grad],
         lr=lr, weight_decay=weight_decay
     )
-    
+
     # Learning rate schedule
     step_size = max(epochs // 4 if epochs >= 100 else epochs // 3, 5)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=0.1)
     print(f"[DETR] LR schedule: drop by 0.1x every {step_size} epochs")
-    
+
     # Training loop
     model.train()
-    
+
     for epoch in range(epochs):
         total_loss = 0.0
-        
+
         for batch_idx, (images, targets) in enumerate(data_loader):
             # Prepare data
-            annotations = [{"image_id": i, "annotations": t["annotations"]} 
+            annotations = [{"image_id": i, "annotations": t["annotations"]}
                           for i, t in enumerate(targets)]
-            
-            encoding = processor(images=list(images), annotations=annotations, 
+
+            encoding = processor(images=list(images), annotations=annotations,
                                return_tensors="pt", do_rescale=True)
-            
+
             pixel_values = encoding["pixel_values"].to(device)
-            hf_labels = [{k: v.to(device) if isinstance(v, torch.Tensor) else v 
+            hf_labels = [{k: v.to(device) if isinstance(v, torch.Tensor) else v
                          for k, v in lab.items()} for lab in encoding["labels"]]
-            
+
             # Diagnostic (first batch only)
             if epoch == 0 and batch_idx == 0:
                 print("\n" + "="*70)
@@ -236,28 +241,28 @@ def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
                     print(f"First target: boxes={hf_labels[0]['boxes'].shape}, "
                           f"classes={hf_labels[0]['class_labels'].unique().tolist()}")
                 print("="*70 + "\n")
-            
+
             # Forward + backward
             outputs = model(pixel_values=pixel_values, labels=hf_labels)
             loss = outputs.loss if outputs.loss is not None else sum(outputs.loss_dict.values())
-            
+
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
             optimizer.step()
-            
+
             total_loss += loss.item()
-        
+
         lr_scheduler.step()
         avg_loss = total_loss / len(data_loader)
-        
+
         print(f"[DETR] Epoch {epoch+1}/{epochs} - loss: {avg_loss:.6f}")
         if hasattr(outputs, 'loss_dict'):
             print(f"  {', '.join(f'{k}: {v.item():.4f}' for k, v in outputs.loss_dict.items())}")
-    
+
     torch.save(model.state_dict(), file_path)
     print(f"[DETR] Saved to {file_path}")
-    
+
     return model
 
 def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', v2=True, min_size=224, max_size=1333, input_channels_dict=None, backbone_fns=None, extra_blocks=None, norm_layer=None, out_channels=256, trainable_layers=3,):
@@ -294,12 +299,22 @@ def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', v2=True, m
     for name, parameter in convnext.named_parameters():
         if not name[0] in layers_to_train:
             parameter.requires_grad_(False)
-
+    """
     backbone =  BackboneWithFPN(
         backbone=convnext,
         return_layers=return_layers,
         in_channels_list=channels,
         out_channels=out_channels,
+        extra_blocks=extra_blocks,
+        norm_layer=norm_layer
+    )
+    """
+    body = IntermediateLayerGetter(convnext, return_layers)
+
+    backbone = BackboneWithFPN(
+        body,
+        channels,
+        out_channels,
         extra_blocks=extra_blocks,
         norm_layer=norm_layer
     )
@@ -368,7 +383,7 @@ def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', min_size=2
 def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10, trainAgain = False, proportion = 0.9, BS = 1, mType = "maskrcnn", trainParams = {"modelType": "maskrcnn", "score": 0.05, "nms": 0.25, "predconf": 0.7, "LR": 0.005, "STEP": 100, "GAMMA":0.1}):
 
     #num_workers = min(8, max(1, multiprocessing.cpu_count() - 4))  # tune if needed
-    #num_workers = 2 
+    #num_workers = 2
     #data_loader = torch.utils.data.DataLoader(dataset, batch_size = BS, shuffle=True, collate_fn=collate_fn, num_workers=num_workers, pin_memory=False, persistent_workers=True)
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=BS, shuffle=True, collate_fn=collate_fn, num_workers=0, pin_memory=False)
 
@@ -419,7 +434,7 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
                     break
             print("@@@@@@@@@@@@@@@@@@@@ EPOCH LOSS "+str(epoch_loss)+" BEST LOSS "+str(best_loss))
 
-        # Save the model's state_dict 
+        # Save the model's state_dict
         model.load_state_dict(torch.load(file_path))
         model.to(device)
 
@@ -440,7 +455,7 @@ def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10,
         elif mType in ["retinanet","fcos","ssd"]:
             model.score_thresh = trainParams["score"]
             model.nms_thresh = trainParams["nms"]
-        
+
         model.eval()  # Set the model to evaluation mode
     print("finished training")
     return model
@@ -502,7 +517,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
                 if var in dir():
                     del var
             torch.cuda.empty_cache()
- 
+
     return metric_logger
 
 def collate_fn(batch):
@@ -516,21 +531,21 @@ def collate_fn_DETR_skip_empty(batch):
     Use this if you want to avoid training on empty tiles.
     """
     filtered_batch = []
-    
+
     for image, target in batch:
         # Skip if no annotations
         if "annotations" in target and len(target["annotations"]) > 0:
             filtered_batch.append((image, target))
-    
+
     # If all samples were empty, return a dummy batch
     # (This shouldn't happen often with proper dataset filtering)
     if len(filtered_batch) == 0:
         print("WARNING: Empty batch after filtering, using first sample from original batch")
         filtered_batch = [batch[0]]
-    
+
     images = []
     targets = []
-    
+
     for image, target in filtered_batch:
         if isinstance(image, torch.Tensor):
             images.append(image)
@@ -542,7 +557,7 @@ def collate_fn_DETR_skip_empty(batch):
                     image = torch.from_numpy(image)
             images.append(image)
         targets.append(target)
-    
+
     return images, targets
 
 
