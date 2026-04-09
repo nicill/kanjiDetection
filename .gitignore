@@ -10,5 +10,7 @@ __pycache__
 *.png
 *.zip
 *.odt
+*.txt
+*.csv
 runs
 ideas

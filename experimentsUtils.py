@@ -18,7 +18,7 @@ from train import train_YOLO,makeTrainYAML, get_transform, train_pytorchModel,tr
 from dataHandlding import buildTRVT, buildTestingFromSingleFolderSakuma2, paramsDictToString
 from predict import predict_yolo, predict_pytorch, predict_DETR
 
-from transformers import DetrForObjectDetection, DetrImageProcessor
+from transformers import DetrForObjectDetection, DetrImageProcessor, DetrConfig
 
 
 class ModelExperiment:
@@ -103,7 +103,6 @@ class PyTorchModelExperiment(ModelExperiment):
         if self.dataset is None:
             self.load_datasets()
         
-        #file_path = ("exp" + paramsDictToString(params, forFileName=True) + "Epochs" + str(self.conf["ep"]) + ".pth" )
         file_path = ("exp"+str(params["modelType"])+"LR" +str(params["LR"])+"STEP"+str(params["STEP"])+"gamma"+str(params["GAMMA"])+"Epochs" + str(self.conf["ep"]) + ".pth" )
         print(f"Testing params {params} with file {file_path}")
         
@@ -147,19 +146,13 @@ class DETRExperiment(ModelExperiment):
         
         # Training
         train_time = 0
-        if self.conf["Train"] or train_again:
+        if train_again:
+            print(f"[DETR] Training with params: {params}")
             start = time.time()
             train_dir = os.path.join(self.conf["TV_dir"], self.conf["Train_dir"])
             detr_dataset = ODDETRDataset(train_dir, True, self.conf["slice"], get_transform())
             
-            train_params = {
-                "file_path": file_path,
-                "trainAgain": train_again,
-                "num_epochs": self.conf["ep"],
-                "batch_size": params["batch_size"],
-                "lr": params["lr"],
-                "device": self.device
-            }
+            train_params = {"file_path": file_path, "trainAgain": train_again, "num_epochs": self.conf["ep"], "batch_size": params["batch_size"],"lr": params["lr"], "device": self.device}
             
             if params["modelType"] == "DETR":
                 model = train_DETR(self.conf, detr_dataset, "DETR_exp_", train_params, file_path)
@@ -168,7 +161,10 @@ class DETRExperiment(ModelExperiment):
             
             train_time = time.time() - start
         else:
-            model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50")
+            print(f"[DETR] Loading pre-trained model from {file_path}")
+            config = DetrConfig.from_pretrained("facebook/detr-resnet-50")
+            config.num_labels = 1
+            model = DetrForObjectDetection(config)
             state = torch.load(file_path, map_location=self.device)
             model.load_state_dict(state)
             model.to(self.device)
@@ -194,31 +190,23 @@ class DETRExperiment(ModelExperiment):
                 origFolder=orig_folder,
                 max_detections=params["max_detections"]
                 )        
-        elif params["modelType"] == "DEFDETR":
-            #not working!!!!
-            processor = DeformableDetrImageProcessor.from_pretrained("SenseTime/deformable-detr")
-            prec, rec, oprec, orec = predict_DeformableDETR_FIXED(
-                test_dataset, model, processor, self.device,
-                params["predconf"], params["max_detections"],
-                pred_folder, orig_folder
-            )
-        
+
         test_time = time.time() - start
         
         metrics = {'prec': prec, 'rec': rec, 'oprec': oprec, 'orec': orec}
         return metrics, train_time, test_time
-
+"""
 
 def MODULARDLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params=None):
-    """
-    Run object detection experiments with single parameter sets
     
-    Args:
-        conf: Configuration dictionary
-        yolo_params: Single dict of YOLO parameters (e.g., {"scale": 0.3, "mosaic": 0.5})
-        pytorch_params: Single dict of PyTorch model parameters
-        detr_params: Single dict of DETR parameters
-    """
+    #Run object detection experiments with single parameter sets
+    #
+    #Args:
+    #    conf: Configuration dictionary
+    #    yolo_params: Single dict of YOLO parameters (e.g., {"scale": 0.3, "mosaic": 0.5})
+    #    pytorch_params: Single dict of PyTorch model parameters
+    #    detr_params: Single dict of DETR parameters
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Data preparation (only once)
@@ -263,7 +251,7 @@ def MODULARDLExperiment(conf, yolo_params=None, pytorch_params=None, detr_params
             print(f"DETR experiment failed: {e}")
     
     print("\n=== All Experiments Complete ===")
-
+"""
 
 class ExperimentRunner:
 

@@ -27,8 +27,8 @@ from dataHandlding import (buildTRVT,buildNewDataTesting,separateTrainTest,
                            makeParamDicts, paramsDictToString)
 from predict import predict_yolo, predict_pytorch, predict_DETR
 
-from transformers import DetrForObjectDetection, DetrImageProcessor
-from experimentsUtils import MODULARDLExperiment, ExperimentRunner
+#from transformers import DetrForObjectDetection, DetrImageProcessor
+from experimentsUtils import ExperimentRunner
 from itertools import product
 
 
@@ -285,7 +285,7 @@ def classicalDescriptorExperiment(fName):
 if __name__ == "__main__":
     print("CUDA:",torch.cuda.is_available())
 
-    doYolo,doPytorch,doDETR = True,True,False
+    doYolo,doPytorch,doDETR = False,False,True
 
     confY,confP=[read_config(sys.argv[i]) if len(sys.argv)> i else read_config(f) 
                  for i,f in [(1,"config.ini"),(2,"config.ini")]]
@@ -297,17 +297,19 @@ if __name__ == "__main__":
 
     if doPytorch:
         rP.run_grid(rP.pytorch,[dict(modelType=m,score=sc,nms=n,predconf=pc,LR=lr,STEP=st,GAMMA=g)
-                                for m,lr,st,g,sc,n,pc in product(["retinanet"],[0.001],[50],[0.1],[0.1],[0.3],[0.7])],"PYTORCH")
+                                for m,lr,st,g,sc,n,pc in product(["maskrcnn","convnextmaskrcnn"],[0.005,0.01],[50],[0.1,0.005],[0.1],[0.3],[0.5,0.7])],"PYTORCH")
+
+    confP["BS"] = 12
 
     if doDETR:
         rP.run_grid(rP.detr,[dict(modelType=m,lr=lr,batch_size=bs,predconf=pc,max_detections=md)
-                             for m,lr,bs,pc,md in product(["DETR"],[1e-4],[4],[0.7],[100])],"DETR")
-    sys.exit()
+                for m,lr,bs,pc,md in product(["DETR"],[5e-5, 1e-4, 2e-4],[confP["BS"]],[0.5, 0.6, 0.7],[100])],"DETR")
 
+"""
     # Run experiments (OLD!)
     if doPytorch:
         #for pars in product(["maskrcnn","fasterrcnn","ssd","fcos","retinanet","convnextmaskrcnn"],[0.005, 0.01, 0.001], [50, 100], [0.1, 0.5], [0.05, 0.1], [0.2, 0.3], [0.5, 0.7]):
-        for pars in product(["retinanet"],[0.005], [100], [0.1], [0.1], [0.3], [0.7]):
+        for pars in product(["convnextmaskrcnn"],[0.005,0.01], [50], [0.1,0.05], [0.005,0.1], [0.3], [0.5,0.7]):
             mT, lr, step, gamma, score, nms, predconf = pars
             print(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ now experimenting with @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ "+str(pars))
             pytorch_params = {"modelType": mT, "score": score, "nms": nms, "predconf": predconf, "LR": lr, "STEP": step, "GAMMA": gamma}
@@ -320,7 +322,7 @@ if __name__ == "__main__":
             yolo_params = {"lr0": lr0, "mosaic": mosaic, "scale": scale}
             MODULARDLExperiment(conf, yolo_params, None, None)
             print(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ END @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ "+str(pars))        
-
+"""
 
 #initial experiment
 #if __name__ == "__main__":

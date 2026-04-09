@@ -167,102 +167,114 @@ def train_DETR(conf, datasrc, prefix='detr_exp_', params=None, file_path=""):
     batch_size = params.get("batch_size", 1)
     lr = params.get("lr", 1e-5)
     weight_decay = params.get("weight_decay", 1e-4)
-
-    print(f"[DETR] File: {file_path}, Train: {trainAgain}, Device: {device}, Epochs: {epochs}")
-
+    
+    print(f"[DETR] File: {file_path}, Train: {trainAgain}, Device: {device}, Epochs: {epochs}, Batch Size: {batch_size}")
+    
     processor = DetrImageProcessor.from_pretrained(processor_name)
-
-    # Create or load model
-    config = DetrConfig.from_pretrained(processor_name)
-    config.num_labels = 1
-    model = DetrForObjectDetection(config)
-
+    data_loader = torch.utils.data.DataLoader(datasrc, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_DETR, num_workers=0, pin_memory=False)
+    
+    print("Training Dataset Length " + str(len(datasrc)))
+    
     if trainAgain:
-        # Initialize from pretrained (except classification head)
+        config = DetrConfig.from_pretrained(processor_name)
+        config.num_labels = 1
+        model = DetrForObjectDetection(config)
+        
         print(f"[DETR] Configuring model with num_labels={config.num_labels}")
         base_model = DetrForObjectDetection.from_pretrained(processor_name)
-
-        pretrained_dict = {k: v for k, v in base_model.state_dict().items()
-                          if k in model.state_dict() and v.shape == model.state_dict()[k].shape}
-
+        pretrained_dict = {k: v for k, v in base_model.state_dict().items() if k in model.state_dict() and v.shape == model.state_dict()[k].shape}
         model.load_state_dict(pretrained_dict, strict=False)
         print(f"[DETR] Initialized with pretrained weights (except class head)")
-    elif os.path.exists(file_path):
-        model.load_state_dict(torch.load(file_path, map_location='cpu'))
-        print(f"[DETR] Loaded model from {file_path}")
+        del base_model
+        torch.cuda.empty_cache()
+        
+        model.to(device)
+        trainable_params = [p for p in model.parameters() if p.requires_grad]
+        optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
+        step_size = max(epochs // 4 if epochs >= 100 else epochs // 3, 5)
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=0.1)
+        patience = params.get("patience", 10)
+        best_loss = float("inf")
+        epochs_without_improvement = 0
+        print(f"[DETR] LR schedule: drop by 0.1x every {step_size} epochs")
+        print(f"[DETR] Early stopping patience: {patience} epochs")
+        
+        model.train()
+        for epoch in range(epochs):
+            epoch_start = time.time()
+            total_loss = 0.0
+            
+            for batch_idx, (images, targets) in enumerate(data_loader):
+                try:
+                    annotations = [{"image_id": i, "annotations": t["annotations"]} for i, t in enumerate(targets)]
+                    encoding = processor(images=list(images), annotations=annotations, return_tensors="pt", do_rescale=True)
+                    pixel_values = encoding["pixel_values"].to(device)
+                    hf_labels = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in lab.items()} for lab in encoding["labels"]]
+                    
+                    outputs = model(pixel_values=pixel_values, labels=hf_labels)
+                    loss = outputs.loss if outputs.loss is not None else sum(outputs.loss_dict.values())
+                    loss_value = loss.item()
+                    
+                    if not math.isfinite(loss_value):
+                        print(f"Loss is {loss_value}, stopping training")
+                        raise Exception("NAN LOSS in train_DETR")
+                    
+                    optimizer.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
+                    optimizer.step()
+                    total_loss += loss_value
+                
+                except RuntimeError as e:
+                    if "out of memory" in str(e):
+                        print(f"OOM on batch — skipping. Consider reducing batch_size.")
+                        optimizer.zero_grad()
+                    else:
+                        raise e
+                finally:
+                    for var in ['images', 'targets', 'annotations', 'encoding', 'pixel_values', 'hf_labels', 'outputs', 'loss']:
+                        if var in locals():
+                            del locals()[var]
+                    torch.cuda.empty_cache()
+            
+            lr_scheduler.step()
+            avg_loss = total_loss / len(data_loader)
+            epoch_time = time.time() - epoch_start
+            print(f"[DETR] Epoch {epoch+1}/{epochs} - loss: {avg_loss:.6f} - time: {epoch_time:.2f}s")
+            
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                epochs_without_improvement = 0
+                if file_path:
+                    torch.save(model.state_dict(), file_path)
+            else:
+                epochs_without_improvement += 1
+                print(f"[DETR] No improvement for {epochs_without_improvement}/{patience} epochs")
+                if epochs_without_improvement >= patience:
+                    print(f"[DETR] Early stopping at epoch {epoch+1}, best loss {best_loss:.6f}")
+                    break
+            print("@@@@@@@@@@@@@@@@@@@@ EPOCH LOSS "+str(avg_loss)+" BEST LOSS "+str(best_loss))
 
-    model.to(device)
 
-    if not trainAgain:
+        if file_path and os.path.isfile(file_path):
+            model.load_state_dict(torch.load(file_path, map_location=device))
+            print(f"[DETR] Loaded best weights from {file_path}")
+        elif file_path:
+            torch.save(model.state_dict(), file_path)
+            print(f"[DETR] Saved to {file_path}")
+        else:
+            print("[DETR] No file_path provided, not saving model")
+        
+    else:
+        print("not training again")
+        config = DetrConfig.from_pretrained(processor_name)
+        config.num_labels = 1
+        model = DetrForObjectDetection(config)
+        model.to(device)
+        model.load_state_dict(torch.load(file_path, map_location=device))
         model.eval()
-        return model
-
-    # Training setup
-    data_loader = torch.utils.data.DataLoader(
-        datasrc, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_DETR_skip_empty
-    )
-
-    optimizer = torch.optim.AdamW(
-        [p for p in model.parameters() if p.requires_grad],
-        lr=lr, weight_decay=weight_decay
-    )
-
-    # Learning rate schedule
-    step_size = max(epochs // 4 if epochs >= 100 else epochs // 3, 5)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=0.1)
-    print(f"[DETR] LR schedule: drop by 0.1x every {step_size} epochs")
-
-    # Training loop
-    model.train()
-
-    for epoch in range(epochs):
-        total_loss = 0.0
-
-        for batch_idx, (images, targets) in enumerate(data_loader):
-            # Prepare data
-            annotations = [{"image_id": i, "annotations": t["annotations"]}
-                          for i, t in enumerate(targets)]
-
-            encoding = processor(images=list(images), annotations=annotations,
-                               return_tensors="pt", do_rescale=True)
-
-            pixel_values = encoding["pixel_values"].to(device)
-            hf_labels = [{k: v.to(device) if isinstance(v, torch.Tensor) else v
-                         for k, v in lab.items()} for lab in encoding["labels"]]
-
-            # Diagnostic (first batch only)
-            if epoch == 0 and batch_idx == 0:
-                print("\n" + "="*70)
-                print("TRAINING DIAGNOSTIC")
-                print("="*70)
-                print(f"Config: num_labels={model.config.num_labels}, batch_size={len(images)}")
-                print(f"Pixel values: {pixel_values.shape}")
-                if hf_labels:
-                    print(f"First target: boxes={hf_labels[0]['boxes'].shape}, "
-                          f"classes={hf_labels[0]['class_labels'].unique().tolist()}")
-                print("="*70 + "\n")
-
-            # Forward + backward
-            outputs = model(pixel_values=pixel_values, labels=hf_labels)
-            loss = outputs.loss if outputs.loss is not None else sum(outputs.loss_dict.values())
-
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
-            optimizer.step()
-
-            total_loss += loss.item()
-
-        lr_scheduler.step()
-        avg_loss = total_loss / len(data_loader)
-
-        print(f"[DETR] Epoch {epoch+1}/{epochs} - loss: {avg_loss:.6f}")
-        if hasattr(outputs, 'loss_dict'):
-            print(f"  {', '.join(f'{k}: {v.item():.4f}' for k, v in outputs.loss_dict.items())}")
-
-    torch.save(model.state_dict(), file_path)
-    print(f"[DETR] Saved to {file_path}")
-
+    
+    print("finished training")
     return model
 
 def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', v2=True, min_size=224, max_size=1333, input_channels_dict=None, backbone_fns=None, extra_blocks=None, norm_layer=None, out_channels=256, trainable_layers=3,):
@@ -299,16 +311,7 @@ def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', v2=True, m
     for name, parameter in convnext.named_parameters():
         if not name[0] in layers_to_train:
             parameter.requires_grad_(False)
-    """
-    backbone =  BackboneWithFPN(
-        backbone=convnext,
-        return_layers=return_layers,
-        in_channels_list=channels,
-        out_channels=out_channels,
-        extra_blocks=extra_blocks,
-        norm_layer=norm_layer
-    )
-    """
+
     body = IntermediateLayerGetter(convnext, return_layers)
 
     backbone = BackboneWithFPN(
@@ -367,18 +370,6 @@ def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', v2=True, m
     )
 
     return model
-
-"""
-def get_maskrcnn_convnext(num_classes, backbone_name='convnext_base', min_size=2048, max_size=2048):
-    backbone = convnext_fpn_backbone(backbone_name=backbone_name, trainable_layers=8)
-    anchor_generator = AnchorGenerator(sizes=((32,), (64,), (128,), (256,), (512,)), aspect_ratios=((0.75, 1.0, 1.5),) * 5)
-    model = MaskRCNN(backbone, num_classes=num_classes, min_size=min_size, max_size=max_size, rpn_anchor_generator=anchor_generator)
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
-    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, 256, num_classes)
-    return model
-"""
 
 def train_pytorchModel(dataset, device, num_classes, file_path, num_epochs = 10, trainAgain = False, proportion = 0.9, BS = 1, mType = "maskrcnn", trainParams = {"modelType": "maskrcnn", "score": 0.05, "nms": 0.25, "predconf": 0.7, "LR": 0.005, "STEP": 100, "GAMMA":0.1}):
 
@@ -523,43 +514,10 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
 def collate_fn(batch):
     return tuple(zip(*batch))
 
-
-# Alternative: If you want to skip tiles with no annotations during training
-def collate_fn_DETR_skip_empty(batch):
-    """
-    Collate function that SKIPS samples with no annotations during training.
-    Use this if you want to avoid training on empty tiles.
-    """
-    filtered_batch = []
-
-    for image, target in batch:
-        # Skip if no annotations
-        if "annotations" in target and len(target["annotations"]) > 0:
-            filtered_batch.append((image, target))
-
-    # If all samples were empty, return a dummy batch
-    # (This shouldn't happen often with proper dataset filtering)
-    if len(filtered_batch) == 0:
-        print("WARNING: Empty batch after filtering, using first sample from original batch")
-        filtered_batch = [batch[0]]
-
-    images = []
-    targets = []
-
-    for image, target in filtered_batch:
-        if isinstance(image, torch.Tensor):
-            images.append(image)
-        else:
-            if isinstance(image, np.ndarray):
-                if image.ndim == 3 and image.shape[2] in [1, 3]:
-                    image = torch.from_numpy(image).permute(2, 0, 1)
-                else:
-                    image = torch.from_numpy(image)
-            images.append(image)
-        targets.append(target)
-
+def collate_fn_DETR(batch):
+    images = [item[0] for item in batch]
+    targets = [item[1] for item in batch]
     return images, targets
-
 
 def get_model_instance_segmentation(num_classes, mType = "maskrcnn"):
     # load an instance segmentation model pre-trained on COCO

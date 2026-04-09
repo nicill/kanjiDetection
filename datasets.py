@@ -265,61 +265,42 @@ class ODDataset(Dataset):
 
 
 class ODDETRDataset(ODDataset):
-    """
-    Modified ODDataset that returns data in COCO-style format
-    for use with HuggingFace DETR (DetrImageProcessor).
+    def __init__(self, dataFolder=None, yoloFormat=True, slice=500, transform=None):
+        super().__init__(dataFolder, yoloFormat, slice, transform)
+        original_count = len(self.imageNameList)
+        valid_indices = []
+        for idx in range(len(self.imageNameList)):
+            img = Image.open(self.imageNameList[idx])
+            img_w, img_h = img.size
+            boxes = load_boxes_from_label(self.labelNameList[idx], img_w, img_h)
+            has_valid = False
+            for box in boxes:
+                xmin, ymin, xmax, ymax = box
+                if (xmax - xmin) > 1 and (ymax - ymin) > 1:
+                    has_valid = True
+                    break
+            if has_valid:
+                valid_indices.append(idx)
+        self.imageNameList = [self.imageNameList[i] for i in valid_indices]
+        self.maskNameList = [self.maskNameList[i] for i in valid_indices]
+        self.labelNameList = [self.labelNameList[i] for i in valid_indices]
     
-    CRITICAL: Returns images as PIL Images or numpy arrays,
-    and annotations in absolute pixel coordinates [x, y, w, h].
-    """
-
     def __getitem__(self, idx):
-        img_path = self.imageNameList[idx]
-        mask_path = self.maskNameList[idx]
-        img = Image.open(img_path).convert("RGB")
-
-        mask = np.array(Image.open(mask_path))
-        numLabels, labelIm, stats, centroids = cv2.connectedComponentsWithStats(255 - mask)
-
-        obj_ids = np.unique(labelIm)[1:]  # skip background
-        masks = labelIm == obj_ids[:, None, None]
-
+        img = Image.open(self.imageNameList[idx]).convert("RGB")
+        img_np = np.array(img)
+        img_h, img_w = img_np.shape[:2]
+        boxes = load_boxes_from_label(self.labelNameList[idx], img_w, img_h)
         annotations = []
-        for i in range(len(obj_ids)):
-            pos = np.nonzero(masks[i])
-            if pos[0].size == 0 or pos[1].size == 0:
-                continue  # skip empty masks
-            
-            xmin = np.min(pos[1])
-            xmax = np.max(pos[1])
-            ymin = np.min(pos[0])
-            ymax = np.max(pos[0])
-            w, h = xmax - xmin + 1, ymax - ymin + 1  # +1 to include the boundary pixel
-
-            # Skip degenerate boxes
+        for box in boxes:
+            xmin, ymin, xmax, ymax = box
+            w = xmax - xmin
+            h = ymax - ymin
             if w <= 1 or h <= 1:
                 continue
-
-            area = float(w * h)
-            bbox = [float(xmin), float(ymin), float(w), float(h)]
-
-            annotations.append({
-                "bbox": bbox,
-                "area": area,
-                "category_id": 0,  # single class
-                "iscrowd": 0
-            })
-
-        # FIXED: Don't add dummy annotations for empty tiles
-        # The processor and training loop should handle empty annotation lists
-        # If you must have something, the training code should filter these out
+            annotations.append({"bbox": [float(xmin), float(ymin), float(w), float(h)], "area": float(w * h), "category_id": 0, "iscrowd": 0})
+        return img_np, {"annotations": annotations}
+    
         
-        # Return as numpy array (preferred by DetrImageProcessor)
-        image = np.array(img)
-        target = {"annotations": annotations}
-
-        return image, target    
-
 
 if __name__ == '__main__':
     print("This main does nothing at the moment, why are you calling it?")

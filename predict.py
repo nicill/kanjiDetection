@@ -361,20 +361,6 @@ def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5
             labels = labels[keep]
             boxes = boxes[keep]
 
-            # === DIAGNOSTIC (first 5 tiles) ===
-            if ind < 5:
-                print(f"\n{'='*70}")
-                print(f"[DEBUG {ind}] Tile: {imageName}")
-                print(f"{'='*70}")
-                print(f"Original tile (W×H): {orig_width}×{orig_height}")
-                print(f"Processed (W×H): {proc_width}×{proc_height}")
-                print(f"Predictions above threshold ({predConfidence}): {keep.sum().item()} / {len(keep)}")
-                
-                if len(boxes) > 0:
-                    print(f"\nFirst 3 predictions (normalized cxcywh):")
-                    for i, (box, score, label) in enumerate(zip(boxes[:3], scores[:3], labels[:3])):
-                        print(f"  [{i}] box={box.cpu().numpy()}, score={score.item():.3f}, label={label.item()}")
-
             # ===== COORDINATE TRANSFORMATION =====
             # Step 1: Convert normalized cxcywh to normalized xyxy
             boxes_norm = torch.zeros_like(boxes)
@@ -400,16 +386,6 @@ def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5
             boxes_orig[:, 1] = boxes_proc[:, 1] * scale_y
             boxes_orig[:, 2] = boxes_proc[:, 2] * scale_x
             boxes_orig[:, 3] = boxes_proc[:, 3] * scale_y
-
-            if ind < 5:
-                print(f"\nCoordinate transformation:")
-                print(f"  Scale factors: x={scale_x:.4f}, y={scale_y:.4f}")
-                if len(boxes_orig) > 0:
-                    print(f"\nFirst 3 predictions (original tile xyxy):")
-                    for i, box in enumerate(boxes_orig[:3]):
-                        x1, y1, x2, y2 = box.cpu().numpy()
-                        w, h = x2-x1, y2-y1
-                        print(f"  [{i}] [{x1:.1f}, {y1:.1f}, {x2:.1f}, {y2:.1f}] (w={w:.1f}, h={h:.1f})")
 
             # Clip to image boundaries
             boxes_orig[:, 0] = boxes_orig[:, 0].clamp(0, orig_width)
@@ -447,9 +423,6 @@ def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5
             filtered_labels = labels.to(cpu_device)
             filtered_scores = scores.to(cpu_device)
             
-            if ind < 5:
-                print(f"After NMS: {len(filtered_boxes)} predictions")
-
             # Prepare GT boxes in xyxy format
             tile_gt_boxes = []
             if len(targets) > 0 and "annotations" in targets[0]:
@@ -459,17 +432,6 @@ def predict_DETR(dataset_test, model, processor, device=None, predConfidence=0.5
                     x2, y2 = x1 + float(bx[2]), y1 + float(bx[3])
                     tile_gt_boxes.append([x1, y1, x2, y2])
             
-            if ind < 5:
-                if len(tile_gt_boxes) > 0:
-                    print(f"\nGround truth (original tile xyxy):")
-                    for i, box in enumerate(tile_gt_boxes[:3]):
-                        x1, y1, x2, y2 = box
-                        w, h = x2-x1, y2-y1
-                        print(f"  [{i}] [{x1:.1f}, {y1:.1f}, {x2:.1f}, {y2:.1f}] (w={w:.1f}, h={h:.1f})")
-                else:
-                    print(f"\nNo ground truth annotations for this tile")
-                print(f"{'='*70}\n")
-
             gt_boxes_tensor = torch.tensor(tile_gt_boxes, dtype=torch.float32) if tile_gt_boxes else torch.empty((0,4), dtype=torch.float32)
 
             # Compute metrics if GT exists
